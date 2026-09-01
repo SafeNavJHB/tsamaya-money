@@ -52,6 +52,7 @@ export function monthlyCashflow(txns: Tx[], months: string[]): CashflowMonth[] {
   for (const tx of txns) {
     const slot = by.get(tx.tx_date.slice(0, 7));
     if (!slot) continue;
+    if (tx.asset_id) continue; // capitalised: not an expense (see categoryTotals)
     if (tx.kind === 'income') slot.income += tx.amount;
     else if (tx.kind === 'expense') slot.expense += tx.amount;
   }
@@ -81,6 +82,10 @@ export function categoryTotals(
   const acc = new Map<string, { total: number; count: number }>();
   for (const tx of txns) {
     if (tx.kind !== kind) continue;
+    // A capitalised purchase debits an asset, not profit or loss. Without this
+    // it would fall into the uncategorised bucket and the income statement
+    // would disagree with the ledger.
+    if (tx.asset_id) continue;
     if (tx.tx_date < from || tx.tx_date > to) continue;
     const key = tx.category_id ?? '';
     const slot = acc.get(key) ?? { total: 0, count: 0 };

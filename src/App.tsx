@@ -10,6 +10,7 @@ import { Accounts } from './pages/Accounts';
 import { Assets } from './pages/Assets';
 import { Recurring } from './pages/Recurring';
 import { Import } from './pages/Import';
+import { Ledger } from './pages/Ledger';
 import { useAutoPost } from './data/useAutoPost';
 import { APP_NAME } from './config';
 
@@ -37,6 +38,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     { to: '/transactions', label: 'Transactions' },
     { to: '/recurring', label: 'Recurring' },
     { to: '/reports', label: 'Reports' },
+    { to: '/ledger', label: 'General ledger' },
     { to: '/categories', label: 'Categories' },
     { to: '/accounts', label: 'Accounts' },
     { to: '/assets', label: 'Assets' },
@@ -95,6 +97,9 @@ function More() {
     <div className="stack">
       <h1>More</h1>
       <div className="card stack">
+        <NavLink className="btn" style={{ width: '100%' }} to="/ledger">
+          General ledger & T-accounts
+        </NavLink>
         <NavLink className="btn" style={{ width: '100%' }} to="/recurring">
           Recurring transactions
         </NavLink>
@@ -168,6 +173,7 @@ export default function App() {
             <Route path="/assets" element={<Assets />} />
             <Route path="/recurring" element={<Recurring />} />
             <Route path="/import" element={<Import />} />
+            <Route path="/ledger" element={<Ledger />} />
             <Route path="/more" element={<More />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

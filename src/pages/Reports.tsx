@@ -9,6 +9,7 @@ import type { SheetSpec } from '../export/xlsx';
 import { exportPdf } from '../export/pdf';
 import type { PdfTableSpec } from '../export/pdf';
 import { stamp } from '../export/download';
+import { BalanceSheetTab, EquityTab } from './statements';
 import {
   accountLedger,
   budgetRows,
@@ -30,7 +31,7 @@ import {
   todayStr,
 } from '../lib/format';
 
-type Tab = 'statement' | 'cashflow' | 'networth' | 'budgets' | 'ledger';
+type Tab = 'statement' | 'sofp' | 'socie' | 'cashflow' | 'networth' | 'budgets' | 'ledger';
 
 interface ExportSet {
   filename: string;
@@ -162,6 +163,8 @@ export function Reports() {
         <Seg
           options={[
             { value: 'statement', label: 'Income statement' },
+            { value: 'sofp', label: 'Balance sheet' },
+            { value: 'socie', label: 'Equity (SOCIE)' },
             { value: 'cashflow', label: 'Cash flow' },
             { value: 'networth', label: 'Net worth' },
             { value: 'budgets', label: 'Budgets' },
@@ -173,6 +176,8 @@ export function Reports() {
       </div>
 
       {tab === 'statement' && <StatementTab />}
+      {tab === 'sofp' && <BalanceSheetTab />}
+      {tab === 'socie' && <EquityTab />}
       {tab === 'cashflow' && <CashflowTab />}
       {tab === 'networth' && <NetWorthTab />}
       {tab === 'budgets' && <BudgetsTab />}

@@ -38,6 +38,7 @@ Beancount accounts map onto this app's model like this:
 | [`sql/01_init.sql`](sql/01_init.sql) | tables, RLS, member gate |
 | [`sql/02_recurring_and_import.sql`](sql/02_recurring_and_import.sql) | recurring series, import rules, transaction provenance |
 | [`sql/03_company_setup.sql`](sql/03_company_setup.sql) | company chart of accounts + the confirmed history from the reconstruction sheets |
+| [`sql/04_ifrs_statements.sql`](sql/04_ifrs_statements.sql) | equity movements, entity settings, balance-sheet classification, capitalisation |
 
 All applied against the live database. To add a member: insert their auth uid
 into `fin_members` via SQL.
@@ -59,7 +60,44 @@ into `fin_members` via SQL.
   signed amount or debit/credit pair. Rows already on file are flagged and
   unticked; saved rules categorise known payees automatically.
 - All maths lives in pure functions in `src/logic/`, exercised by `npm test`
-  (`scripts/logic-tests.ts`) — CI runs typecheck + tests before every deploy.
+  (`scripts/logic-tests.ts` + `scripts/accounting-tests.ts`) — CI runs
+  typecheck + tests before every deploy.
+
+## Double entry and the IFRS for SMEs statements
+
+`src/logic/ledger.ts` turns every stored row into a balanced pair of postings,
+and **every** statement — trial balance, general ledger, T-accounts, statement
+of financial position, statement of changes in equity — reads that one list, so
+no two surfaces can disagree.
+
+| Source row | Debit | Credit |
+|---|---|---|
+| Expense | expense category (or the asset, when capitalised) | account |
+| Income | account | income category |
+| Transfer | destination account | source account |
+| Share issue | contra account, else share capital receivable | share capital |
+| Dividend | dividends declared (equity) | contra account, else dividend payable |
+| Prior-period adjustment | retained earnings ↔ contra account (signed) | |
+
+Presentation decisions worth knowing:
+
+- **Accounts are sided by their balance, not their nature.** An overdrawn bank
+  account presents in current liabilities and a director loan in credit
+  presents as a liability, in the statements *and* in the T-account captions.
+- **The asset register is not posted.** A valuation has no second leg, so
+  assets reach the balance sheet at posted cost (Section 17 cost model) by
+  capitalising the purchase against the asset; valuations stay a memorandum
+  figure. Register items with a valuation but no posted purchase are excluded
+  and called out in a note beneath the statement.
+- **Capital transactions never touch profit or loss**, which is what keeps the
+  SOCIE and the income statement independent of each other.
+- The financial year end is a setting (`fin_settings.fy_end_month`, default
+  February). P&L accounts reset each year; balance sheet accounts carry forward.
+
+The test suite asserts the identities rather than the arithmetic: every entry
+balances, the trial balance balances, assets = liabilities + equity in
+consecutive years, SOCIE closing equity ties to the balance sheet, and the two
+independently-computed income statements agree.
 
 ## Development
 

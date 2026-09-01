@@ -22,6 +22,9 @@ export interface Account {
   opening_balance: number;
   sort: number;
   archived: boolean;
+  /** Statement of financial position caption (IFRS for SMEs Section 4). */
+  bs_line?: string | null;
+  is_current?: boolean;
 }
 
 export interface Tx {
@@ -39,6 +42,8 @@ export interface Tx {
   recurring_id?: string | null;
   /** The raw statement description, when the row came from an import. */
   import_ref?: string | null;
+  /** Set when the spend was capitalised: the debit goes to this asset, not to P&L. */
+  asset_id?: string | null;
 }
 
 export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually';
@@ -77,6 +82,28 @@ export interface Asset {
   notes: string | null;
   sort: number;
   archived: boolean;
+  bs_line?: string | null;
+  is_current?: boolean;
+}
+
+export type EquityKind = 'share_issue' | 'dividend' | 'prior_period_adjustment';
+
+export interface EquityMovement {
+  id: string;
+  mv_date: string;
+  kind: EquityKind;
+  /** Positive for issues and dividends; signed for a prior-period adjustment. */
+  amount: number;
+  contra_account_id: string | null;
+  shares_issued: number | null;
+  notes: string | null;
+}
+
+export interface Settings {
+  entity_name: string;
+  registration_number: string | null;
+  /** Month the financial year ends in, 1-12. */
+  fy_end_month: number;
 }
 
 export interface Valuation {
@@ -94,4 +121,6 @@ export interface AllData {
   valuations: Valuation[];
   recurring: RecurringRule[];
   importRules: ImportRule[];
+  equity: EquityMovement[];
+  settings: Settings;
 }
