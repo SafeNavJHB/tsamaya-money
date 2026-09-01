@@ -42,6 +42,9 @@ export function Import() {
     const withRules = applyRules(built.rows, importRules, categories);
     setRows(markDuplicates(withRules, transactions, acc));
     setSkipped(built.skipped);
+    // `remember` is keyed by preview-row index, and remapping columns can
+    // renumber the rows — so drop it rather than attach a rule to the wrong row.
+    setRemember({});
   }
 
   async function onFile(file: File) {
