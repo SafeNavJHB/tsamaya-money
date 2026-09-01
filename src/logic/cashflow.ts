@@ -96,38 +96,32 @@ export function cashflowStatement(
 
   const bucket = (c: CfClass) => (c === 'operating' ? operating : c === 'investing' ? investing : financing);
 
-  // 2. Every non-cash balance-sheet account: its movement is a cash flow of
-  //    the opposite sign, classified by cf_class.
-  for (const a of data.accounts) {
-    const key = `acc:${a.id}`;
+  // 2. Every non-cash balance-sheet ledger account — enumerated from the BOOK,
+  //    not from the raw data, so synthetic accounts (accumulated depreciation,
+  //    share capital receivable, dividend payable) are never silently missed.
+  //    A missed account would break the reconciliation, which is why this is
+  //    driven off the same chart the statements use.
+  for (const [key, ref] of book.accounts) {
+    if (ref.type === 'income' || ref.type === 'expense' || ref.type === 'equity') continue;
     if (cashSet.has(key)) continue;
     const delta = round2(balanceAt(book, key, to) - balanceAt(book, key, priorEnd));
     if (delta === 0) continue;
-    const cls = accountCfClass(a);
-    const assetLike = balanceAt(book, key, to) >= 0;
-    bucket(cls).push({
-      caption:
-        cls === 'financing'
-          ? `${delta < 0 ? 'Increase' : 'Decrease'} in ${a.bs_line?.toLowerCase() ?? a.name.toLowerCase()}`
-          : movementCaption(a.bs_line ?? a.name, delta, assetLike),
-      amount: -delta,
-    });
-  }
-
-  for (const a of data.assets) {
-    const key = `ast:${a.id}`;
-    const delta = round2(balanceAt(book, key, to) - balanceAt(book, key, priorEnd));
-    if (delta === 0) continue;
-    const cls = assetCfClass(a);
-    bucket(cls).push({
-      caption:
-        cls === 'investing'
-          ? delta > 0
-            ? `Acquisition of ${a.name.toLowerCase()}`
-            : `Proceeds on disposal of ${a.name.toLowerCase()}`
-          : movementCaption(a.name, delta, a.side === 'asset'),
-      amount: -delta,
-    });
+    const cls = ref.cfClass ?? 'operating';
+    const name = ref.bsLine ?? ref.name;
+    let caption: string;
+    if (ref.cfCaption) {
+      caption = ref.cfCaption;
+    } else if (cls === 'investing') {
+      caption = delta > 0 ? `Acquisition of ${name.toLowerCase()}` : `Proceeds on disposal of ${name.toLowerCase()}`;
+    } else if (cls === 'financing') {
+      caption = `${delta < 0 ? 'Increase' : 'Decrease'} in ${name.toLowerCase()}`;
+    } else {
+      caption = movementCaption(name, delta, balanceAt(book, key, to) >= 0);
+    }
+    const line = bucket(cls);
+    const existing = line.find((l) => l.caption === caption);
+    if (existing) existing.amount = round2(existing.amount - delta);
+    else line.push({ caption, amount: -delta });
   }
 
   // 3. Equity accounts. Share capital and dividends are financing; a

@@ -90,6 +90,26 @@ export interface Asset {
   is_current?: boolean;
   /** Cash flow classification (Section 7). Defaults to investing for assets. */
   cf_class?: 'operating' | 'investing' | 'financing' | null;
+  // ---- depreciation register (Section 17) ----
+  depreciate?: boolean;
+  depr_method?: 'straight_line' | 'reducing_balance' | null;
+  useful_life_months?: number | null;
+  residual_value?: number;
+  /** Annual percentage, reducing-balance method only. */
+  depr_rate_pct?: number | null;
+  /** Date the asset became available for use — when depreciation begins. */
+  depr_start?: string | null;
+  asset_class?: string | null;
+}
+
+export interface DepreciationCharge {
+  id: string;
+  asset_id: string;
+  /** Last day of the month the charge relates to. */
+  period_end: string;
+  amount: number;
+  method: string;
+  basis: string | null;
 }
 
 export type EquityKind = 'share_issue' | 'dividend' | 'prior_period_adjustment';
@@ -130,6 +150,7 @@ export interface AllData {
   equity: EquityMovement[];
   settings: Settings;
   notes: NarrativeNote[];
+  depreciation: DepreciationCharge[];
 }
 
 export interface NarrativeNote {

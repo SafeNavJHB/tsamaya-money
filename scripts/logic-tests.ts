@@ -143,6 +143,7 @@ const data: AllData = {
   equity: [],
   settings: { entity_name: 'TEST', registration_number: null, fy_end_month: 2 },
   notes: [],
+  depreciation: [],
 };
 eq(latestValuation(data.valuations, 'car', '2026-08-31')?.value, 250000, 'valuation as-of picks earlier');
 const nw = netWorthAt(data, '2026-09-30');

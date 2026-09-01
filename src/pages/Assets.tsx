@@ -24,6 +24,17 @@ function AssetForm({ initial, onClose }: { initial?: Asset | null; onClose: () =
   const [category, setCategory] = useState<AssetCategory>(initial?.category ?? 'other');
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [archived, setArchived] = useState(initial?.archived ?? false);
+  const [bsLine, setBsLine] = useState(initial?.bs_line ?? '');
+  const [isCurrent, setIsCurrent] = useState(initial?.is_current ?? false);
+  const [assetClass, setAssetClass] = useState(initial?.asset_class ?? '');
+  const [depreciate, setDepreciate] = useState(initial?.depreciate ?? false);
+  const [deprMethod, setDeprMethod] = useState<'straight_line' | 'reducing_balance'>(
+    initial?.depr_method ?? 'straight_line',
+  );
+  const [usefulLife, setUsefulLife] = useState(initial?.useful_life_months ? String(initial.useful_life_months) : '36');
+  const [deprRate, setDeprRate] = useState(initial?.depr_rate_pct ? String(initial.depr_rate_pct) : '');
+  const [residual, setResidual] = useState(initial?.residual_value ? String(initial.residual_value) : '0');
+  const [deprStart, setDeprStart] = useState(initial?.depr_start ?? todayStr());
   const [valDate, setValDate] = useState(todayStr());
   const [valAmount, setValAmount] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,8 +46,30 @@ function AssetForm({ initial, onClose }: { initial?: Asset | null; onClose: () =
 
   async function save() {
     if (!name.trim()) return setError('Give it a name.');
+    if (depreciate && side !== 'asset') return setError('Only assets are depreciated.');
+    const res = parseAmount(residual || '0');
+    if (res == null || res < 0) return setError('Residual value must be zero or more.');
+    if (depreciate && deprMethod === 'straight_line' && (!Number(usefulLife) || Number(usefulLife) <= 0))
+      return setError('Enter a useful life in months.');
+    if (depreciate && deprMethod === 'reducing_balance' && (!Number(deprRate) || Number(deprRate) <= 0))
+      return setError('Enter an annual depreciation rate.');
     setBusy(true);
-    const row = { name: name.trim(), side, category, notes: notes.trim() || null, archived };
+    const row = {
+      name: name.trim(),
+      side,
+      category,
+      notes: notes.trim() || null,
+      archived,
+      bs_line: bsLine.trim() || null,
+      is_current: isCurrent,
+      asset_class: assetClass.trim() || null,
+      depreciate: side === 'asset' ? depreciate : false,
+      depr_method: depreciate ? deprMethod : null,
+      useful_life_months: depreciate && deprMethod === 'straight_line' ? Number(usefulLife) : null,
+      depr_rate_pct: depreciate && deprMethod === 'reducing_balance' ? Number(deprRate) : null,
+      residual_value: res,
+      depr_start: depreciate ? deprStart : null,
+    };
     let err = null;
     let assetId = initial?.id;
     if (initial) {
@@ -129,7 +162,61 @@ function AssetForm({ initial, onClose }: { initial?: Asset | null; onClose: () =
         </label>
       )}
 
-      <h3 style={{ margin: '10px 0 8px' }}>{initial ? 'Add / update valuation' : 'Current value (optional)'}</h3>
+      <h3 style={{ margin: '14px 0 8px' }}>Financial statement presentation</h3>
+      <Field label="Balance sheet caption">
+        <input value={bsLine} onChange={(e) => setBsLine(e.target.value)} placeholder="e.g. Property, plant and equipment" />
+      </Field>
+      <Field label="Classification">
+        <select value={isCurrent ? 'current' : 'non'} onChange={(e) => setIsCurrent(e.target.value === 'current')}>
+          <option value="non">Non-current</option>
+          <option value="current">Current</option>
+        </select>
+      </Field>
+
+      {side === 'asset' && (
+        <>
+          <h3 style={{ margin: '14px 0 8px' }}>Depreciation</h3>
+          <label className="row small" style={{ marginBottom: 10, cursor: 'pointer' }}>
+            <input type="checkbox" style={{ width: 'auto' }} checked={depreciate} onChange={(e) => setDepreciate(e.target.checked)} />
+            Depreciate this asset
+          </label>
+          {depreciate && (
+            <>
+              <Field label="Asset class">
+                <input value={assetClass} onChange={(e) => setAssetClass(e.target.value)} placeholder="e.g. Computer equipment" />
+              </Field>
+              <Field label="Method">
+                <select value={deprMethod} onChange={(e) => setDeprMethod(e.target.value as typeof deprMethod)}>
+                  <option value="straight_line">Straight line</option>
+                  <option value="reducing_balance">Reducing balance</option>
+                </select>
+              </Field>
+              {deprMethod === 'straight_line' ? (
+                <Field label="Useful life (months)">
+                  <input inputMode="numeric" value={usefulLife} onChange={(e) => setUsefulLife(e.target.value)} />
+                </Field>
+              ) : (
+                <Field label="Rate (% per year)">
+                  <input inputMode="decimal" value={deprRate} onChange={(e) => setDeprRate(e.target.value)} placeholder="e.g. 33.3" />
+                </Field>
+              )}
+              <Field label="Residual value (R)">
+                <input inputMode="decimal" value={residual} onChange={(e) => setResidual(e.target.value)} />
+              </Field>
+              <Field label="Available for use from">
+                <input type="date" value={deprStart} onChange={(e) => setDeprStart(e.target.value)} />
+              </Field>
+              <p className="small muted" style={{ marginTop: -6 }}>
+                Depreciation starts when the asset is available for use, not necessarily when it was bought, and is
+                charged monthly. Cost comes from expenses you tag to this asset, so record the purchase that way to
+                capitalise it.
+              </p>
+            </>
+          )}
+        </>
+      )}
+
+      <h3 style={{ margin: '14px 0 8px' }}>{initial ? 'Add / update valuation' : 'Current value (optional)'}</h3>
       <div className="row">
         <input type="date" value={valDate} onChange={(e) => setValDate(e.target.value)} style={{ width: 'auto' }} />
         <input

@@ -6,6 +6,7 @@ import type {
   AllData,
   Asset,
   Category,
+  DepreciationCharge,
   EquityMovement,
   ImportRule,
   RecurringRule,
@@ -40,6 +41,7 @@ const empty: AllData = {
   equity: [],
   settings: DEFAULT_SETTINGS,
   notes: [],
+  depreciation: [],
 };
 
 const DataContext = createContext<DataState | null>(null);
@@ -53,7 +55,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     setError(null);
-    const [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes] = await Promise.all([
+    const [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes, depr] = await Promise.all([
       supabase.from('fin_categories').select('*').order('sort').order('name'),
       supabase.from('fin_accounts').select('*').order('sort').order('name'),
       supabase.from('fin_transactions').select('*').order('tx_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -64,8 +66,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('fin_equity').select('*').order('mv_date'),
       supabase.from('fin_settings').select('*').maybeSingle(),
       supabase.from('fin_notes').select('*').order('sort'),
+      supabase.from('fin_depreciation').select('*').order('period_end'),
     ]);
-    const firstError = [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes].find((r) => r.error)?.error;
+    const firstError = [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes, depr].find((r) => r.error)?.error;
     if (firstError) {
       setError(firstError.message);
       setLoading(false);
@@ -78,13 +81,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })),
       accounts: (accs.data as Account[]).map((a) => ({ ...a, opening_balance: num(a.opening_balance) })),
       transactions: (txns.data as Tx[]).map((t) => ({ ...t, amount: num(t.amount) })),
-      assets: assets.data as Asset[],
+      assets: (assets.data as Asset[]).map((a) => ({ ...a, residual_value: num(a.residual_value), depr_rate_pct: a.depr_rate_pct == null ? null : num(a.depr_rate_pct) })),
       valuations: (vals.data as Valuation[]).map((v) => ({ ...v, value: num(v.value) })),
       recurring: (recur.data as RecurringRule[]).map((r) => ({ ...r, amount: num(r.amount) })),
       importRules: rules.data as ImportRule[],
       equity: (equity.data as EquityMovement[]).map((e) => ({ ...e, amount: num(e.amount) })),
       settings: (setts.data as Settings | null) ?? DEFAULT_SETTINGS,
       notes: notes.data as NarrativeNote[],
+      depreciation: (depr.data as DepreciationCharge[]).map((d) => ({ ...d, amount: num(d.amount) })),
     });
     setLoading(false);
   }, []);

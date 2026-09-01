@@ -73,7 +73,7 @@ const data: AllData = {
     // falls in the NEXT financial year — must not touch FY2027
     tx({ tx_date: '2027-04-01', kind: 'income', amount: 9999, category_id: 'sales', account_id: 'bank' }),
   ],
-  recurring: [], importRules: [], equity, settings, notes: [],
+  recurring: [], importRules: [], equity, settings, notes: [], depreciation: [],
 };
 
 const book = buildBook(data);

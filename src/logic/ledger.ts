@@ -28,6 +28,8 @@ export const RETAINED_EARNINGS = 'eq:retained_earnings';
 export const DIVIDENDS = 'eq:dividends';
 export const SHARE_RECEIVABLE = 'eq:share_capital_receivable';
 export const DIVIDEND_PAYABLE = 'eq:dividend_payable';
+export const DEPRECIATION_EXPENSE = 'sys:depreciation';
+export const accDeprKey = (assetId: string) => `accdep:${assetId}`;
 
 export interface LedgerAccountRef {
   key: string;
@@ -36,6 +38,16 @@ export interface LedgerAccountRef {
   /** Presentation caption on the statement of financial position. */
   bsLine?: string;
   isCurrent?: boolean;
+  /**
+   * A contra account nets against this one before the balance sheet sides it.
+   * Accumulated depreciation carries a credit balance but must reduce its
+   * asset, not appear among liabilities.
+   */
+  netsInto?: string;
+  /** Cash flow section this account's movement belongs to. */
+  cfClass?: 'operating' | 'investing' | 'financing';
+  /** Caption to use on the statement of cash flows, when the default is wrong. */
+  cfCaption?: string;
 }
 
 export interface Posting {
@@ -90,6 +102,7 @@ export function buildBook(data: AllData): LedgerBook {
       type: 'asset',
       bsLine: a.bs_line ?? undefined,
       isCurrent: a.is_current ?? true,
+      cfClass: (a.cf_class as 'operating' | 'investing' | 'financing' | null) ?? 'operating',
     });
   }
   for (const c of data.categories) {
@@ -102,13 +115,28 @@ export function buildBook(data: AllData): LedgerBook {
       type: a.side === 'asset' ? 'asset' : 'liability',
       bsLine: a.bs_line ?? undefined,
       isCurrent: a.is_current ?? false,
+      cfClass: (a.cf_class as 'operating' | 'investing' | 'financing' | null) ?? 'investing',
+    });
+    // Accumulated depreciation: a contra-asset that nets against its asset on
+    // the balance sheet, and is added back as a non-cash item in operating
+    // cash flows rather than appearing as an investing movement.
+    add({
+      key: accDeprKey(a.id),
+      name: `Accumulated depreciation — ${a.name}`,
+      type: 'asset',
+      bsLine: a.bs_line ?? undefined,
+      isCurrent: a.is_current ?? false,
+      netsInto: astKey(a.id),
+      cfClass: 'operating',
+      cfCaption: 'Adjustment for depreciation',
     });
   }
   add({ key: SHARE_CAPITAL, name: 'Share capital', type: 'equity' });
   add({ key: RETAINED_EARNINGS, name: 'Retained earnings / (accumulated loss)', type: 'equity' });
   add({ key: DIVIDENDS, name: 'Dividends declared', type: 'equity' });
-  add({ key: SHARE_RECEIVABLE, name: 'Share capital receivable', type: 'asset', bsLine: 'Share capital receivable', isCurrent: true });
-  add({ key: DIVIDEND_PAYABLE, name: 'Dividend payable', type: 'liability', bsLine: 'Dividend payable', isCurrent: true });
+  add({ key: SHARE_RECEIVABLE, name: 'Share capital receivable', type: 'asset', bsLine: 'Share capital receivable', isCurrent: true, cfClass: 'financing' });
+  add({ key: DIVIDEND_PAYABLE, name: 'Dividend payable', type: 'liability', bsLine: 'Dividend payable', isCurrent: true, cfClass: 'financing' });
+  add({ key: DEPRECIATION_EXPENSE, name: 'Depreciation', type: 'expense' });
 
   const nameOf = (key: string) => accounts.get(key)?.name ?? '(unknown)';
   const postings: Posting[] = [];
@@ -147,6 +175,23 @@ export function buildBook(data: AllData): LedgerBook {
       if (m.amount > 0) pair(postings, m.mv_date, m.id, detail || 'Prior-period adjustment', other, nameOf(other), RETAINED_EARNINGS, nameOf(RETAINED_EARNINGS), m.amount);
       else pair(postings, m.mv_date, m.id, detail || 'Prior-period adjustment', RETAINED_EARNINGS, nameOf(RETAINED_EARNINGS), other, nameOf(other), -m.amount);
     }
+  }
+
+  // Depreciation: Dr depreciation expense / Cr accumulated depreciation.
+  for (const d of data.depreciation) {
+    const cr = accDeprKey(d.asset_id);
+    if (!accounts.has(cr)) continue; // asset deleted; charge cascades away anyway
+    pair(
+      postings,
+      d.period_end,
+      d.id,
+      d.basis ?? 'Depreciation',
+      DEPRECIATION_EXPENSE,
+      nameOf(DEPRECIATION_EXPENSE),
+      cr,
+      nameOf(cr),
+      d.amount,
+    );
   }
 
   postings.sort((a, b) => a.date.localeCompare(b.date) || a.sourceId.localeCompare(b.sourceId));

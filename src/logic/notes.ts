@@ -11,9 +11,10 @@
 // statements and presented in a systematic order; supporting notes follow the
 // order the statements present the items (8.5(c)).
 import { round2 } from './compute';
-import { DIVIDENDS, SHARE_CAPITAL, balanceAt } from './ledger';
+import { DIVIDENDS, SHARE_CAPITAL, accDeprKey, balanceAt } from './ledger';
 import type { LedgerBook } from './ledger';
 import { isCashAccount } from './cashflow';
+import { canDepreciate } from './depreciation';
 import type { AllData } from '../types';
 
 export interface NoteScheduleRow {
@@ -63,17 +64,54 @@ export function noteSchedules(book: LedgerBook, data: AllData, from: string, to:
         .filter((p) => ppeKeys.includes(p.key) && p.date >= from && p.date <= to)
         .reduce((s, p) => s + p.credit, 0),
     );
+    // Section 17.31(e): a reconciliation of the carrying amount showing
+    // additions, disposals and depreciation separately, gross cost and
+    // accumulated depreciation shown apart rather than netted.
+    const deprKeys = ppe.map((a) => accDeprKey(a.id));
+    const accOpening = round2(deprKeys.reduce((s, k) => s + at(k, priorEnd), 0));
+    const accClosing = round2(deprKeys.reduce((s, k) => s + at(k, to), 0));
+    const charge = round2(
+      book.postings
+        .filter((p) => deprKeys.includes(p.key) && p.date >= from && p.date <= to)
+        .reduce((s, p) => s + p.debit - p.credit, 0),
+    );
+    const depreciating = ppe.filter(canDepreciate);
+    const notDepreciating = ppe.filter((a) => !canDepreciate(a) && at(`ast:${a.id}`, to) !== 0);
+
     out.push({
       key: 'ppe',
       title: 'Property, plant and equipment',
       rows: [
-        { caption: 'Carrying amount at the beginning of the year', current: opening, prior: 0 },
+        { caption: 'Cost at the beginning of the year', current: opening, prior: 0 },
         { caption: 'Additions', current: additions, prior: 0 },
         ...(disposals ? [{ caption: 'Disposals', current: -disposals, prior: 0 }] : []),
-        { caption: 'Carrying amount at the end of the year', current: closing, prior: opening, isTotal: true },
+        { caption: 'Cost at the end of the year', current: closing, prior: opening },
+        { caption: 'Accumulated depreciation at the beginning of the year', current: accOpening, prior: 0 },
+        { caption: 'Depreciation charge for the year', current: charge, prior: 0 },
+        { caption: 'Accumulated depreciation at the end of the year', current: accClosing, prior: accOpening },
+        {
+          caption: 'Carrying amount at the end of the year',
+          current: round2(closing + accClosing),
+          prior: round2(opening + accOpening),
+          isTotal: true,
+        },
       ],
       commentary: [
-        'Assets are carried at cost. No depreciation has been recognised because the app does not yet maintain a depreciation register — useful lives and residual values must be assessed and depreciation raised before the statements are issued.',
+        ...depreciating.map(
+          (a) =>
+            `${a.name}${a.asset_class ? ` (${a.asset_class})` : ''} is depreciated on the ${
+              a.depr_method === 'reducing_balance'
+                ? `reducing balance method at ${a.depr_rate_pct}% per year`
+                : `straight line method over ${a.useful_life_months} months`
+            }${a.residual_value ? `, to a residual value of R${a.residual_value.toFixed(2)}` : ''}, from ${a.depr_start}.`,
+        ),
+        ...(notDepreciating.length
+          ? [
+              `No depreciation has been raised on ${notDepreciating
+                .map((a) => a.name)
+                .join(', ')}. Assess the useful life and residual value and set up the depreciation register before these statements are issued.`,
+            ]
+          : []),
         ...ppe
           .filter((a) => data.valuations.some((v) => v.asset_id === a.id))
           .map((a) => {
@@ -81,7 +119,7 @@ export function noteSchedules(book: LedgerBook, data: AllData, from: string, to:
               .filter((x) => x.asset_id === a.id && x.val_date <= to)
               .sort((x, y) => y.val_date.localeCompare(x.val_date))[0];
             return v
-              ? `${a.name} was valued at R${v.value.toFixed(2)} on ${v.val_date}. This is a memorandum figure only and is not reflected above, which is stated at cost.`
+              ? `${a.name} was valued at R${v.value.toFixed(2)} on ${v.val_date}. This is a memorandum figure only; the carrying amount above is stated at cost less accumulated depreciation.`
               : '';
           })
           .filter(Boolean),

@@ -40,6 +40,7 @@ Beancount accounts map onto this app's model like this:
 | [`sql/03_company_setup.sql`](sql/03_company_setup.sql) | company chart of accounts + the confirmed history from the reconstruction sheets |
 | [`sql/04_ifrs_statements.sql`](sql/04_ifrs_statements.sql) | equity movements, entity settings, balance-sheet classification, capitalisation |
 | [`sql/05_cashflow_and_notes.sql`](sql/05_cashflow_and_notes.sql) | cash/activity classification per account, narrative notes |
+| [`sql/06_depreciation.sql`](sql/06_depreciation.sql) | fixed asset settings and the posted depreciation register |
 
 All applied against the live database. To add a member: insert their auth uid
 into `fin_members` via SQL.
@@ -127,6 +128,36 @@ resolved before the statements are issued.
 
 **Full AFS pack (PDF)** on the Reports page emits the balance sheet, income
 statement, SOCIE, cash flow statement and all notes as one document.
+
+### Depreciation register
+
+Charges are **posted monthly and stored**, never re-derived from the current
+settings. That is the whole point: a revised useful life or residual value is a
+change in accounting estimate applied *prospectively* (Section 10.15), so prior
+periods must keep the charge actually raised. Recomputing from today's settings
+would silently restate history.
+
+- Straight line over a useful life in months, or reducing balance at an annual
+  rate, both to an optional residual value; the final charge is capped so the
+  carrying amount never falls below residual.
+- Depreciation starts when the asset is **available for use** (Section 17.20),
+  which is not necessarily the purchase date, and cost comes from expenses
+  tagged to the asset — an asset with no capitalised purchase depreciates nil.
+- The register shows what is owed and posts the catch-up in one action; a
+  unique index on `(asset_id, period_end)` makes double-charging impossible.
+- Postings are `Dr Depreciation / Cr Accumulated depreciation`. Accumulated
+  depreciation is a **contra-asset** (`netsInto` on its ledger account): it nets
+  against its asset on the balance sheet rather than appearing among
+  liabilities, and is added back as a non-cash item in operating cash flows
+  while the purchase stays an investing outflow at full cost.
+- The PPE note is the Section 17.31 reconciliation — cost and accumulated
+  depreciation shown separately, with the method, life and residual disclosed.
+
+Known limitation, stated rather than hidden: each asset row is depreciated as a
+single unit from its start date, so a later addition to the same row is written
+off over that row's remaining life. Record a separate asset row per addition
+when that matters. **Disposal accounting is not built** — removing cost and
+accumulated depreciation and recognising the gain or loss must be done by hand.
 
 ## Development
 

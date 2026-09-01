@@ -12,6 +12,7 @@
 import { round2 } from './compute';
 import {
   DIVIDENDS,
+
   RETAINED_EARNINGS,
   SHARE_CAPITAL,
   balanceAt,
@@ -109,9 +110,18 @@ export function sofp(book: LedgerBook, atDate: string, inceptionDate = '0000-01-
   const currentLiabilities: SofpLine[] = [];
   const nonCurrentLiabilities: SofpLine[] = [];
 
+  // Net contra accounts into their parent first: accumulated depreciation
+  // carries a credit balance but must reduce its asset, not present among
+  // liabilities. Without this a depreciated asset would appear on both sides.
+  const netted = new Map<string, number>();
   for (const [key, ref] of book.accounts) {
     if (ref.type === 'income' || ref.type === 'expense' || ref.type === 'equity') continue;
-    const net = balanceAt(book, key, atDate);
+    const target = ref.netsInto && book.accounts.has(ref.netsInto) ? ref.netsInto : key;
+    netted.set(target, round2((netted.get(target) ?? 0) + balanceAt(book, key, atDate)));
+  }
+
+  for (const [key, net] of netted) {
+    const ref = book.accounts.get(key)!;
     if (net === 0) continue;
     const current = ref.isCurrent ?? true;
     if (net > 0) {
