@@ -35,6 +35,38 @@ export interface Tx {
   payee: string | null;
   notes: string | null;
   created_at: string;
+  /** Set when the row was posted from a recurring series. */
+  recurring_id?: string | null;
+  /** The raw statement description, when the row came from an import. */
+  import_ref?: string | null;
+}
+
+export type Frequency = 'weekly' | 'fortnightly' | 'monthly' | 'quarterly' | 'annually';
+
+export interface RecurringRule {
+  id: string;
+  name: string;
+  kind: TxKind;
+  amount: number;
+  category_id: string | null;
+  account_id: string;
+  transfer_account_id: string | null;
+  payee: string | null;
+  notes: string | null;
+  frequency: Frequency;
+  anchor_day: number;
+  start_date: string;
+  end_date: string | null;
+  next_date: string;
+  auto_post: boolean;
+  archived: boolean;
+}
+
+export interface ImportRule {
+  id: string;
+  match_text: string;
+  category_id: string | null;
+  payee: string | null;
 }
 
 export interface Asset {
@@ -60,4 +92,6 @@ export interface AllData {
   transactions: Tx[];
   assets: Asset[];
   valuations: Valuation[];
+  recurring: RecurringRule[];
+  importRules: ImportRule[];
 }

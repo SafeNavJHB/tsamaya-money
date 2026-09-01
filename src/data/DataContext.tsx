@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Account, AllData, Asset, Category, Tx, Valuation } from '../types';
+import type { Account, AllData, Asset, Category, ImportRule, RecurringRule, Tx, Valuation } from '../types';
 
 interface DataState extends AllData {
   loading: boolean;
@@ -11,7 +11,15 @@ interface DataState extends AllData {
   accountById: Map<string, Account>;
 }
 
-const empty: AllData = { categories: [], accounts: [], transactions: [], assets: [], valuations: [] };
+const empty: AllData = {
+  categories: [],
+  accounts: [],
+  transactions: [],
+  assets: [],
+  valuations: [],
+  recurring: [],
+  importRules: [],
+};
 
 const DataContext = createContext<DataState | null>(null);
 
@@ -24,14 +32,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     setError(null);
-    const [cats, accs, txns, assets, vals] = await Promise.all([
+    const [cats, accs, txns, assets, vals, recur, rules] = await Promise.all([
       supabase.from('fin_categories').select('*').order('sort').order('name'),
       supabase.from('fin_accounts').select('*').order('sort').order('name'),
       supabase.from('fin_transactions').select('*').order('tx_date', { ascending: false }).order('created_at', { ascending: false }),
       supabase.from('fin_assets').select('*').order('sort').order('name'),
       supabase.from('fin_valuations').select('*').order('val_date'),
+      supabase.from('fin_recurring').select('*').order('next_date'),
+      supabase.from('fin_import_rules').select('*').order('match_text'),
     ]);
-    const firstError = [cats, accs, txns, assets, vals].find((r) => r.error)?.error;
+    const firstError = [cats, accs, txns, assets, vals, recur, rules].find((r) => r.error)?.error;
     if (firstError) {
       setError(firstError.message);
       setLoading(false);
@@ -46,6 +56,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       transactions: (txns.data as Tx[]).map((t) => ({ ...t, amount: num(t.amount) })),
       assets: assets.data as Asset[],
       valuations: (vals.data as Valuation[]).map((v) => ({ ...v, value: num(v.value) })),
+      recurring: (recur.data as RecurringRule[]).map((r) => ({ ...r, amount: num(r.amount) })),
+      importRules: rules.data as ImportRule[],
     });
     setLoading(false);
   }, []);

@@ -234,8 +234,9 @@ export function Assets() {
         </button>
       </div>
       <p className="small muted">
-        Track things you own (car, investments, retirement funds) and owe (loans, credit). Don't add your
-        transaction accounts here — their balances already count toward net worth automatically.
+        What the company owns (equipment, prepaid deposits, IP) and owes (loans, SARS, credit). Don't list the
+        accounts from the Accounts page here — their balances already count toward net worth, and the director loan
+        is one of them.
       </p>
       {section('asset', 'Assets')}
       {section('liability', 'Liabilities')}

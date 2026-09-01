@@ -8,6 +8,9 @@ import { Reports } from './pages/Reports';
 import { Categories } from './pages/Categories';
 import { Accounts } from './pages/Accounts';
 import { Assets } from './pages/Assets';
+import { Recurring } from './pages/Recurring';
+import { Import } from './pages/Import';
+import { useAutoPost } from './data/useAutoPost';
 import { APP_NAME } from './config';
 
 function Icon({ d }: { d: string }) {
@@ -28,13 +31,16 @@ const ICONS = {
 
 function Shell({ children }: { children: React.ReactNode }) {
   const { error } = useData();
+  useAutoPost();
   const links = [
     { to: '/', label: 'Dashboard' },
     { to: '/transactions', label: 'Transactions' },
+    { to: '/recurring', label: 'Recurring' },
     { to: '/reports', label: 'Reports' },
     { to: '/categories', label: 'Categories' },
     { to: '/accounts', label: 'Accounts' },
     { to: '/assets', label: 'Assets' },
+    { to: '/import', label: 'Import' },
   ];
   return (
     <>
@@ -89,6 +95,12 @@ function More() {
     <div className="stack">
       <h1>More</h1>
       <div className="card stack">
+        <NavLink className="btn" style={{ width: '100%' }} to="/recurring">
+          Recurring transactions
+        </NavLink>
+        <NavLink className="btn" style={{ width: '100%' }} to="/import">
+          Import bank statement
+        </NavLink>
         <NavLink className="btn" style={{ width: '100%' }} to="/categories">
           Categories & budgets
         </NavLink>
@@ -100,8 +112,8 @@ function More() {
         </button>
       </div>
       <p className="small muted" style={{ textAlign: 'center' }}>
-        {APP_NAME} — private to you. Data lives in your Supabase project; use Reports → Full backup for an
-        offline copy.
+        {APP_NAME} — the books for TSAMAYA (PTY) LTD. Data lives in your own Supabase project; use Reports → Full
+        backup for an offline copy to hand your accountant.
       </p>
     </div>
   );
@@ -154,6 +166,8 @@ export default function App() {
             <Route path="/categories" element={<Categories />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/assets" element={<Assets />} />
+            <Route path="/recurring" element={<Recurring />} />
+            <Route path="/import" element={<Import />} />
             <Route path="/more" element={<More />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

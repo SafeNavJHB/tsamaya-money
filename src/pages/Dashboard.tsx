@@ -9,12 +9,13 @@ import {
   monthlyCashflow,
   netWorthAt,
 } from '../logic/compute';
+import { dueDates } from '../logic/recurring';
 import { fmtDate, fmtMoney, lastNMonths, monthEnd, monthKey, monthLabel, monthStart, todayStr } from '../lib/format';
 import type { Tx } from '../types';
 
 export function Dashboard() {
   const data = useData();
-  const { transactions, categories, categoryById, accountById } = data;
+  const { transactions, categories, recurring, categoryById, accountById } = data;
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<Tx | null>(null);
 
@@ -33,6 +34,10 @@ export function Dashboard() {
     [transactions, categories, mk],
   );
   const recent = transactions.slice(0, 8);
+  const dueCount = useMemo(
+    () => recurring.reduce((s, r) => s + (r.auto_post ? 0 : dueDates(r, today).length), 0),
+    [recurring, today],
+  );
 
   return (
     <div className="stack">
@@ -43,6 +48,18 @@ export function Dashboard() {
           + Add
         </button>
       </div>
+
+      {dueCount > 0 && (
+        <Link className="card row" to="/recurring" style={{ textDecoration: 'none', color: 'inherit' }}>
+          <strong>
+            {dueCount} recurring transaction{dueCount === 1 ? '' : 's'} due
+          </strong>
+          <div className="spacer" />
+          <span className="small" style={{ color: 'var(--accent)' }}>
+            review →
+          </span>
+        </Link>
+      )}
 
       <div className="stats">
         <div className="stat">
