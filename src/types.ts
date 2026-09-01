@@ -102,6 +102,34 @@ export interface Asset {
   asset_class?: string | null;
 }
 
+export interface Disposal {
+  id: string;
+  asset_id: string;
+  disposal_date: string;
+  proceeds: number;
+  /** Null means the proceeds were not received in cash — a receivable. */
+  proceeds_account_id: string | null;
+  notes: string | null;
+}
+
+export interface JournalLine {
+  id: string;
+  journal_id: string;
+  /** A ledger account key: 'acc:<id>' | 'cat:<id>' | 'ast:<id>' | 'eq:…' | 'sys:…'. */
+  account_key: string;
+  debit: number;
+  credit: number;
+  line_note: string | null;
+}
+
+export interface Journal {
+  id: string;
+  entry_date: string;
+  reference: string | null;
+  narration: string;
+  lines: JournalLine[];
+}
+
 export interface DepreciationCharge {
   id: string;
   asset_id: string;
@@ -130,6 +158,8 @@ export interface Settings {
   registration_number: string | null;
   /** Month the financial year ends in, 1-12. */
   fy_end_month: number;
+  /** Nothing may be posted, edited or deleted on or before this date. */
+  locked_until?: string | null;
 }
 
 export interface Valuation {
@@ -151,6 +181,8 @@ export interface AllData {
   settings: Settings;
   notes: NarrativeNote[];
   depreciation: DepreciationCharge[];
+  disposals: Disposal[];
+  journals: Journal[];
 }
 
 export interface NarrativeNote {

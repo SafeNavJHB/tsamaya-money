@@ -41,6 +41,7 @@ Beancount accounts map onto this app's model like this:
 | [`sql/04_ifrs_statements.sql`](sql/04_ifrs_statements.sql) | equity movements, entity settings, balance-sheet classification, capitalisation |
 | [`sql/05_cashflow_and_notes.sql`](sql/05_cashflow_and_notes.sql) | cash/activity classification per account, narrative notes |
 | [`sql/06_depreciation.sql`](sql/06_depreciation.sql) | fixed asset settings and the posted depreciation register |
+| [`sql/07_disposals_journals_lock.sql`](sql/07_disposals_journals_lock.sql) | asset disposals, manual journal entries, period locking |
 
 All applied against the live database. To add a member: insert their auth uid
 into `fin_members` via SQL.
@@ -156,8 +157,34 @@ would silently restate history.
 Known limitation, stated rather than hidden: each asset row is depreciated as a
 single unit from its start date, so a later addition to the same row is written
 off over that row's remaining life. Record a separate asset row per addition
-when that matters. **Disposal accounting is not built** — removing cost and
-accumulated depreciation and recognising the gain or loss must be done by hand.
+when that matters.
+
+**Disposals** (Section 17.27-17.30) remove the cost and the accumulated
+depreciation in one entry, bring in the proceeds, and put the balancing figure
+to gain or loss. Depreciation stops from the disposal date. Proceeds that have
+not been received sit as a receivable rather than pretending cash arrived. On
+the statement of cash flows the proceeds are the investing inflow and the gain
+or loss is reversed out of operating as a non-cash item — the raw movement is
+the carrying amount, which is neither.
+
+### Journal entries
+
+`fin_journals` + `fin_journal_lines` allow any balanced Dr/Cr against any
+account in the chart. This is the escape hatch that makes accruals, provisions,
+prepayment releases, reclassifications, corrections and opening balances
+possible without a bespoke table for each. A deferred constraint trigger
+rejects an entry that does not balance or has fewer than two lines, so an
+unbalanced journal cannot exist even if written straight to the API. A line
+referencing an unknown account key is surfaced as an "Unrecognised account"
+rather than dropped, because dropping it would unbalance the books silently.
+
+### Closing a period
+
+`fin_settings.locked_until` stops anything being posted, edited or deleted on
+or before that date — transactions, journals, capital transactions,
+depreciation and disposals alike. Triggers enforce it on every table, not the
+UI, so statements already issued cannot move underneath you. Clear the date in
+Settings to reopen.
 
 ## Development
 

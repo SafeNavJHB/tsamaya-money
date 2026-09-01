@@ -51,9 +51,16 @@ export function dueDepreciation(
   existing: DepreciationCharge[],
   costAt: (assetId: string, date: string) => number,
   asOf: string,
+  /**
+   * When the asset was disposed of. Depreciation is charged for periods ending
+   * BEFORE the disposal date, so an asset sold mid-month is not depreciated for
+   * the month it left the business.
+   */
+  disposedOn?: string | null,
   cap = 600,
 ): DuePeriod[] {
   if (!canDepreciate(asset)) return [];
+  const limit = disposedOn && disposedOn < asOf ? disposedOn : asOf;
   const residual = asset.residual_value ?? 0;
   const posted = existing.filter((c) => c.asset_id === asset.id);
   const postedPeriods = new Set(posted.map((c) => c.period_end));
@@ -65,7 +72,7 @@ export function dueDepreciation(
   let periodEnd = monthEndOf(asset.depr_start!);
   let guard = 0;
 
-  while (periodEnd <= asOf && guard++ < cap) {
+  while (periodEnd <= limit && guard++ < cap) {
     if (postedPeriods.has(periodEnd)) {
       periodEnd = nextMonthEnd(periodEnd);
       continue;
@@ -117,6 +124,8 @@ export interface RegisterRow {
   /** Charges owed but not yet posted, at the reporting date. */
   outstanding: number;
   fullyDepreciated: boolean;
+  /** Set once the asset has been disposed of. */
+  disposedOn: string | null;
 }
 
 /** The register as at a date, for the Assets screen and the Section 17 note. */
@@ -126,10 +135,12 @@ export function register(
   costAt: (assetId: string, date: string) => number,
   atDate: string,
   yearFrom: string,
+  disposedOn: (assetId: string) => string | null = () => null,
 ): RegisterRow[] {
   return assets
     .filter((a) => a.side === 'asset' && !a.archived)
     .map((asset) => {
+      const disposal = disposedOn(asset.id);
       const cost = round2(costAt(asset.id, atDate));
       const mine = charges.filter((c) => c.asset_id === asset.id && c.period_end <= atDate);
       const accumulated = round2(mine.reduce((s, c) => s + c.amount, 0));
@@ -137,7 +148,7 @@ export function register(
         mine.filter((c) => c.period_end >= yearFrom).reduce((s, c) => s + c.amount, 0),
       );
       const outstanding = round2(
-        dueDepreciation(asset, charges, costAt, atDate).reduce((s, d) => s + d.amount, 0),
+        dueDepreciation(asset, charges, costAt, atDate, disposal).reduce((s, d) => s + d.amount, 0),
       );
       const carrying = round2(cost - accumulated);
       return {
@@ -149,6 +160,7 @@ export function register(
         outstanding,
         fullyDepreciated:
           canDepreciate(asset) && cost > 0 && carrying <= round2(asset.residual_value ?? 0) + 0.004,
+        disposedOn: disposal,
       };
     });
 }

@@ -2,8 +2,8 @@
 import { useMemo, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useData } from '../data/DataContext';
-import { Empty } from '../components/ui';
-import { fmtDate, fmtMoney, todayStr } from '../lib/format';
+import { Empty, Field, Modal } from '../components/ui';
+import { fmtDate, fmtMoney, parseAmount, todayStr } from '../lib/format';
 import { balanceAt, buildBook } from '../logic/ledger';
 import { financialYearFor } from '../logic/statements';
 import { METHOD_LABEL, canDepreciate, dueDepreciation, register } from '../logic/depreciation';
@@ -11,7 +11,113 @@ import { exportCsv } from '../export/csv';
 import { exportXlsx } from '../export/xlsx';
 import { exportPdf } from '../export/pdf';
 import { stamp } from '../export/download';
-import type { Asset } from '../types';
+import type { Asset, Disposal } from '../types';
+
+function DisposalForm({
+  asset, carrying, existing, onClose,
+}: { asset: Asset; carrying: number; existing?: Disposal | null; onClose: () => void }) {
+  const { accounts, refresh } = useData();
+  const live = accounts.filter((a) => !a.archived);
+  const [date, setDate] = useState(existing?.disposal_date ?? todayStr());
+  const [proceeds, setProceeds] = useState(existing ? String(existing.proceeds) : '');
+  const [account, setAccount] = useState(existing?.proceeds_account_id ?? live[0]?.id ?? '');
+  const [received, setReceived] = useState(existing ? existing.proceeds_account_id !== null : true);
+  const [notes, setNotes] = useState(existing?.notes ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const p = parseAmount(proceeds || '0') ?? 0;
+  const result = Math.round((p - carrying) * 100) / 100;
+
+  async function save() {
+    if (p < 0) return setError('Proceeds cannot be negative.');
+    if (received && !account) return setError('Choose where the proceeds went.');
+    setBusy(true);
+    setError(null);
+    const row = {
+      asset_id: asset.id,
+      disposal_date: date,
+      proceeds: p,
+      proceeds_account_id: received ? account : null,
+      notes: notes.trim() || null,
+    };
+    const q = existing
+      ? supabase.from('fin_disposals').update(row).eq('id', existing.id)
+      : supabase.from('fin_disposals').insert(row);
+    const { error: err } = await q;
+    setBusy(false);
+    if (err) return setError(err.message);
+    await refresh();
+    onClose();
+  }
+
+  async function remove() {
+    if (!existing || !window.confirm('Reverse this disposal? The asset comes back onto the books.')) return;
+    setBusy(true);
+    const { error: err } = await supabase.from('fin_disposals').delete().eq('id', existing.id);
+    setBusy(false);
+    if (err) return setError(err.message);
+    await refresh();
+    onClose();
+  }
+
+  return (
+    <Modal title={`Dispose of ${asset.name}`} onClose={onClose}>
+      {error && <div className="error-banner">{error}</div>}
+      <p className="small muted">
+        Carrying amount at disposal {fmtMoney(carrying)}. The cost and accumulated depreciation are removed and the
+        difference against the proceeds goes to profit or loss. Depreciation stops from this date.
+      </p>
+      <Field label="Date of disposal">
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+      </Field>
+      <Field label="Proceeds (R)">
+        <input inputMode="decimal" value={proceeds} onChange={(e) => setProceeds(e.target.value)} placeholder="0.00 if scrapped" />
+      </Field>
+      <label className="row small" style={{ marginBottom: 10, cursor: 'pointer' }}>
+        <input type="checkbox" style={{ width: 'auto' }} checked={received} onChange={(e) => setReceived(e.target.checked)} />
+        Proceeds received
+      </label>
+      {received ? (
+        <Field label="Received into">
+          <select value={account} onChange={(e) => setAccount(e.target.value)}>
+            {live.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : (
+        <p className="small muted">Not received — the amount is carried as a receivable until it is.</p>
+      )}
+      <Field label="Notes (optional)">
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Sold to a colleague" />
+      </Field>
+      <p className="small">
+        {p === 0 && carrying === 0
+          ? 'No gain or loss.'
+          : result >= 0
+            ? `This will recognise a gain of ${fmtMoney(result)}.`
+            : `This will recognise a loss of ${fmtMoney(-result)}.`}
+      </p>
+      <div className="row" style={{ marginTop: 10 }}>
+        {existing && (
+          <button className="btn danger" onClick={remove} disabled={busy}>
+            Reverse
+          </button>
+        )}
+        <div className="spacer" />
+        <button className="btn" onClick={onClose} disabled={busy}>
+          Cancel
+        </button>
+        <button className="btn primary" onClick={save} disabled={busy}>
+          {busy ? 'Saving…' : 'Record disposal'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
 
 export function DepreciationRegister() {
   const data = useData();
@@ -27,18 +133,23 @@ export function DepreciationRegister() {
     () => (assetId: string, date: string) => balanceAt(book, `ast:${assetId}`, date),
     [book],
   );
-  const rows = useMemo(
-    () => register(data.assets, data.depreciation, costAt, upTo, fy.from),
-    [data.assets, data.depreciation, costAt, upTo, fy.from],
+  const disposedOn = useMemo(
+    () => (assetId: string) => data.disposals.find((d) => d.asset_id === assetId)?.disposal_date ?? null,
+    [data.disposals],
   );
+  const rows = useMemo(
+    () => register(data.assets, data.depreciation, costAt, upTo, fy.from, disposedOn),
+    [data.assets, data.depreciation, costAt, upTo, fy.from, disposedOn],
+  );
+  const [disposing, setDisposing] = useState<{ asset: Asset; carrying: number } | null>(null);
 
   const owed = useMemo(
     () =>
       data.assets
         .filter(canDepreciate)
-        .map((a) => ({ asset: a, due: dueDepreciation(a, data.depreciation, costAt, upTo) }))
+        .map((a) => ({ asset: a, due: dueDepreciation(a, data.depreciation, costAt, upTo, disposedOn(a.id)) }))
         .filter((d) => d.due.length > 0),
-    [data.assets, data.depreciation, costAt, upTo],
+    [data.assets, data.depreciation, costAt, upTo, disposedOn],
   );
   const owedTotal = owed.reduce((s, o) => s + o.due.reduce((t, d) => t + d.amount, 0), 0);
 
@@ -172,6 +283,7 @@ export function DepreciationRegister() {
                   <th className="num">Charge this year</th>
                   <th className="num">Accumulated</th>
                   <th className="num">Carrying amount</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -205,6 +317,23 @@ export function DepreciationRegister() {
                     <td className="num">{fmtMoney(r.chargeThisYear)}</td>
                     <td className="num">{fmtMoney(r.accumulated)}</td>
                     <td className="num">{fmtMoney(r.carrying)}</td>
+                    <td className="num">
+                      {r.disposedOn ? (
+                        <button
+                          className="btn small"
+                          onClick={() => setDisposing({ asset: r.asset, carrying: r.carrying })}
+                        >
+                          Disposed {fmtDate(r.disposedOn)}
+                        </button>
+                      ) : (
+                        <button
+                          className="btn small"
+                          onClick={() => setDisposing({ asset: r.asset, carrying: r.carrying })}
+                        >
+                          Dispose
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 <tr className="total">
@@ -213,6 +342,7 @@ export function DepreciationRegister() {
                   <td className="num">{fmtMoney(totals.year)}</td>
                   <td className="num">{fmtMoney(totals.acc)}</td>
                   <td className="num">{fmtMoney(totals.carry)}</td>
+                  <td></td>
                 </tr>
               </tbody>
             </table>
@@ -251,6 +381,15 @@ export function DepreciationRegister() {
           </div>
         )}
       </div>
+
+      {disposing && (
+        <DisposalForm
+          asset={disposing.asset}
+          carrying={disposing.carrying}
+          existing={data.disposals.find((d) => d.asset_id === disposing.asset.id) ?? null}
+          onClose={() => setDisposing(null)}
+        />
+      )}
 
       {data.depreciation.length > 0 && (
         <div className="card">

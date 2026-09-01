@@ -12,6 +12,8 @@ import { Recurring } from './pages/Recurring';
 import { Import } from './pages/Import';
 import { Ledger } from './pages/Ledger';
 import { DepreciationRegister } from './pages/Register';
+import { Journals } from './pages/Journals';
+import { Settings } from './pages/Settings';
 import { useAutoPost } from './data/useAutoPost';
 import { APP_NAME } from './config';
 
@@ -44,6 +46,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     { to: '/accounts', label: 'Accounts' },
     { to: '/assets', label: 'Assets' },
     { to: '/register', label: 'Depreciation' },
+    { to: '/journals', label: 'Journals' },
     { to: '/import', label: 'Import' },
   ];
   return (
@@ -105,6 +108,9 @@ function More() {
         <NavLink className="btn" style={{ width: '100%' }} to="/register">
           Depreciation register
         </NavLink>
+        <NavLink className="btn" style={{ width: '100%' }} to="/journals">
+          Journal entries
+        </NavLink>
         <NavLink className="btn" style={{ width: '100%' }} to="/recurring">
           Recurring transactions
         </NavLink>
@@ -116,6 +122,9 @@ function More() {
         </NavLink>
         <NavLink className="btn" style={{ width: '100%' }} to="/accounts">
           Accounts
+        </NavLink>
+        <NavLink className="btn" style={{ width: '100%' }} to="/settings">
+          Settings
         </NavLink>
         <button className="btn" style={{ width: '100%' }} onClick={() => void signOut()}>
           Sign out
@@ -180,6 +189,8 @@ export default function App() {
             <Route path="/import" element={<Import />} />
             <Route path="/ledger" element={<Ledger />} />
             <Route path="/register" element={<DepreciationRegister />} />
+            <Route path="/journals" element={<Journals />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="/more" element={<More />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

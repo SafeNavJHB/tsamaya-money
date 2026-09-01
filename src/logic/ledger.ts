@@ -30,6 +30,11 @@ export const SHARE_RECEIVABLE = 'eq:share_capital_receivable';
 export const DIVIDEND_PAYABLE = 'eq:dividend_payable';
 export const DEPRECIATION_EXPENSE = 'sys:depreciation';
 export const accDeprKey = (assetId: string) => `accdep:${assetId}`;
+export const GAIN_ON_DISPOSAL = 'sys:gain_on_disposal';
+export const LOSS_ON_DISPOSAL = 'sys:loss_on_disposal';
+export const DISPOSAL_RECEIVABLE = 'sys:disposal_receivable';
+/** Source ids for postings the cash flow statement presents specially. */
+export const disposalSourceId = (id: string) => `disposal:${id}`;
 
 export interface LedgerAccountRef {
   key: string;
@@ -87,6 +92,28 @@ function pair(
   out.push({ key: crKey, date, debit: 0, credit: a, contra: drName, detail, sourceId });
 }
 
+/**
+ * An n-leg entry. Used where two legs are not enough — an asset disposal
+ * removes cost and accumulated depreciation, records proceeds and recognises
+ * a gain or loss in one entry. Every leg shares a contra label, which is how a
+ * real ledger cross-references a journal.
+ */
+function journal(
+  out: Posting[],
+  date: string,
+  sourceId: string,
+  detail: string,
+  label: string,
+  legs: { key: string; debit?: number; credit?: number }[],
+): void {
+  for (const leg of legs) {
+    const dr = round2(leg.debit ?? 0);
+    const cr = round2(leg.credit ?? 0);
+    if (dr === 0 && cr === 0) continue;
+    out.push({ key: leg.key, date, debit: dr, credit: cr, contra: label, detail, sourceId });
+  }
+}
+
 /** Builds the full chart of accounts and every posting, in date order. */
 export function buildBook(data: AllData): LedgerBook {
   const accounts = new Map<string, LedgerAccountRef>();
@@ -137,6 +164,12 @@ export function buildBook(data: AllData): LedgerBook {
   add({ key: SHARE_RECEIVABLE, name: 'Share capital receivable', type: 'asset', bsLine: 'Share capital receivable', isCurrent: true, cfClass: 'financing' });
   add({ key: DIVIDEND_PAYABLE, name: 'Dividend payable', type: 'liability', bsLine: 'Dividend payable', isCurrent: true, cfClass: 'financing' });
   add({ key: DEPRECIATION_EXPENSE, name: 'Depreciation', type: 'expense' });
+  add({ key: GAIN_ON_DISPOSAL, name: 'Gain on disposal of assets', type: 'income' });
+  add({ key: LOSS_ON_DISPOSAL, name: 'Loss on disposal of assets', type: 'expense' });
+  add({
+    key: DISPOSAL_RECEIVABLE, name: 'Disposal proceeds receivable', type: 'asset',
+    bsLine: 'Trade and other receivables', isCurrent: true, cfClass: 'operating',
+  });
 
   const nameOf = (key: string) => accounts.get(key)?.name ?? '(unknown)';
   const postings: Posting[] = [];
@@ -191,6 +224,53 @@ export function buildBook(data: AllData): LedgerBook {
       cr,
       nameOf(cr),
       d.amount,
+    );
+  }
+
+  // Disposals (Section 17.27-17.30): remove the asset at cost, remove its
+  // accumulated depreciation, bring in the proceeds, and put the balancing
+  // figure to gain or loss. Posted AFTER depreciation so the carrying amount
+  // is measured after the final charge.
+  for (const d of data.disposals) {
+    const astK = astKey(d.asset_id);
+    const depK = accDeprKey(d.asset_id);
+    if (!accounts.has(astK)) continue;
+    const upTo = d.disposal_date;
+    const cost = round2(
+      postings.filter((p) => p.key === astK && p.date <= upTo).reduce((s2, p) => s2 + p.debit - p.credit, 0),
+    );
+    const accDep = round2(
+      -postings.filter((p) => p.key === depK && p.date <= upTo).reduce((s2, p) => s2 + p.debit - p.credit, 0),
+    );
+    const carrying = round2(cost - accDep);
+    const proceeds = round2(d.proceeds);
+    const result = round2(proceeds - carrying); // positive = gain
+    const cashKey = d.proceeds_account_id ? accKey(d.proceeds_account_id) : DISPOSAL_RECEIVABLE;
+    const name = accounts.get(astK)?.name ?? 'asset';
+    journal(postings, upTo, disposalSourceId(d.id), d.notes ?? `Disposal of ${name}`, `Disposal — ${name}`, [
+      { key: astK, credit: cost },
+      { key: depK, debit: accDep },
+      { key: cashKey, debit: proceeds },
+      result >= 0 ? { key: GAIN_ON_DISPOSAL, credit: result } : { key: LOSS_ON_DISPOSAL, debit: -result },
+    ]);
+  }
+
+  // Manual journals last: they may legitimately adjust anything above.
+  for (const j of data.journals) {
+    journal(
+      postings,
+      j.entry_date,
+      `journal:${j.id}`,
+      j.narration,
+      j.reference?.trim() ? `Journal ${j.reference}` : 'Journal',
+      j.lines.map((l) => {
+        if (!accounts.has(l.account_key)) {
+          // Never drop a posting: an unknown key would unbalance the books
+          // silently. Surface it as a visible account instead.
+          add({ key: l.account_key, name: `Unrecognised account (${l.account_key})`, type: 'asset', isCurrent: true });
+        }
+        return { key: l.account_key, debit: l.debit, credit: l.credit };
+      }),
     );
   }
 

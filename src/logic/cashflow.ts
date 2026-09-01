@@ -16,7 +16,9 @@ import {
   DIVIDENDS,
   RETAINED_EARNINGS,
   SHARE_CAPITAL,
+  accDeprKey,
   balanceAt,
+  disposalSourceId,
   profitForPeriod,
 } from './ledger';
 import type { LedgerBook } from './ledger';
@@ -101,10 +103,27 @@ export function cashflowStatement(
   //    share capital receivable, dividend payable) are never silently missed.
   //    A missed account would break the reconciliation, which is why this is
   //    driven off the same chart the statements use.
+  // The cost and accumulated-depreciation legs of a disposal are removed from
+  // the generic walk and presented explicitly below, because their raw
+  // movement is the carrying amount, not the cash that actually changed hands.
+  const disposalsInPeriod = data.disposals.filter((d) => d.disposal_date >= from && d.disposal_date <= to);
+  const excluded = new Set(disposalsInPeriod.map((d) => disposalSourceId(d.id)));
+  const assetLegKeys = new Set(disposalsInPeriod.flatMap((d) => [`ast:${d.asset_id}`, accDeprKey(d.asset_id)]));
+  const deltaOf = (key: string): number => {
+    if (!assetLegKeys.has(key)) return round2(balanceAt(book, key, to) - balanceAt(book, key, priorEnd));
+    return round2(
+      book.postings
+        .filter((p) => p.key === key && p.date >= from && p.date <= to && !excluded.has(p.sourceId))
+        .reduce((s2, p) => s2 + p.debit - p.credit, 0) +
+        balanceAt(book, key, priorEnd) -
+        balanceAt(book, key, priorEnd),
+    );
+  };
+
   for (const [key, ref] of book.accounts) {
     if (ref.type === 'income' || ref.type === 'expense' || ref.type === 'equity') continue;
     if (cashSet.has(key)) continue;
-    const delta = round2(balanceAt(book, key, to) - balanceAt(book, key, priorEnd));
+    const delta = deltaOf(key);
     if (delta === 0) continue;
     const cls = ref.cfClass ?? 'operating';
     const name = ref.bsLine ?? ref.name;
@@ -135,6 +154,28 @@ export function cashflowStatement(
 
   const reDelta = round2(balanceAt(book, RETAINED_EARNINGS, to) - balanceAt(book, RETAINED_EARNINGS, priorEnd));
   if (reDelta !== 0) operating.push({ caption: 'Prior-period adjustment (non-cash)', amount: -reDelta });
+
+  // 4. Disposals. The gain or loss sits in profit but moved no cash, so it is
+  //    reversed out of operating; the proceeds are the investing inflow.
+  //    Together these equal the carrying amount removed from the walk above,
+  //    which is why the statement still reconciles.
+  for (const d of disposalsInPeriod) {
+    const name = book.accounts.get(`ast:${d.asset_id}`)?.name ?? 'asset';
+    const legs = book.postings.filter((p) => p.sourceId === disposalSourceId(d.id));
+    const cost = round2(legs.filter((p) => p.key === `ast:${d.asset_id}`).reduce((s2, p) => s2 + p.credit - p.debit, 0));
+    const accDep = round2(legs.filter((p) => p.key === accDeprKey(d.asset_id)).reduce((s2, p) => s2 + p.debit - p.credit, 0));
+    const carrying = round2(cost - accDep);
+    const result = round2(d.proceeds - carrying);
+    if (result !== 0) {
+      operating.push({
+        caption: result > 0 ? `Gain on disposal of ${name.toLowerCase()}` : `Loss on disposal of ${name.toLowerCase()}`,
+        amount: -result,
+      });
+    }
+    if (d.proceeds !== 0) {
+      investing.push({ caption: `Proceeds on disposal of ${name.toLowerCase()}`, amount: round2(d.proceeds) });
+    }
+  }
 
   const sum = (ls: CashflowLine[]) => round2(ls.reduce((s, l) => s + l.amount, 0));
   const netOperating = sum(operating);

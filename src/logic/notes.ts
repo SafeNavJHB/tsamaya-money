@@ -51,7 +51,14 @@ export function noteSchedules(book: LedgerBook, data: AllData, from: string, to:
   // ---- Property, plant and equipment (Section 17.31 movement schedule) ----
   const ppe = data.assets.filter((a) => a.side === 'asset' && !a.archived);
   const ppeKeys = ppe.map((a) => `ast:${a.id}`);
-  if (ppeKeys.some((k) => at(k, to) !== 0 || at(k, priorEnd) !== 0)) {
+  // The note is required whenever there was PPE activity in the period, not
+  // only when a balance survives it: an asset bought and sold within the same
+  // year leaves nil balances but must still be reconciled (Section 17.31(e)).
+  const ppeAllKeys = [...ppeKeys, ...ppe.map((a) => accDeprKey(a.id))];
+  const ppeActivity = book.postings.some(
+    (p) => ppeAllKeys.includes(p.key) && p.date >= from && p.date <= to,
+  );
+  if (ppeActivity || ppeKeys.some((k) => at(k, to) !== 0 || at(k, priorEnd) !== 0)) {
     const opening = round2(ppeKeys.reduce((s, k) => s + at(k, priorEnd), 0));
     const closing = round2(ppeKeys.reduce((s, k) => s + at(k, to), 0));
     const additions = round2(
@@ -72,9 +79,22 @@ export function noteSchedules(book: LedgerBook, data: AllData, from: string, to:
     const accClosing = round2(deprKeys.reduce((s, k) => s + at(k, to), 0));
     const charge = round2(
       book.postings
-        .filter((p) => deprKeys.includes(p.key) && p.date >= from && p.date <= to)
+        .filter(
+          (p) =>
+            deprKeys.includes(p.key) && p.date >= from && p.date <= to && !p.sourceId.startsWith('disposal:'),
+        )
         .reduce((s, p) => s + p.debit - p.credit, 0),
     );
+    // Accumulated depreciation released when an asset left the business.
+    const deprRemoved = round2(
+      book.postings
+        .filter((p) => deprKeys.includes(p.key) && p.date >= from && p.date <= to && p.sourceId.startsWith('disposal:'))
+        .reduce((s2, p) => s2 + p.debit - p.credit, 0),
+    );
+    const disposedNames = data.disposals
+      .filter((d) => d.disposal_date >= from && d.disposal_date <= to)
+      .map((d) => data.assets.find((a) => a.id === d.asset_id)?.name)
+      .filter(Boolean);
     const depreciating = ppe.filter(canDepreciate);
     const notDepreciating = ppe.filter((a) => !canDepreciate(a) && at(`ast:${a.id}`, to) !== 0);
 
@@ -88,6 +108,7 @@ export function noteSchedules(book: LedgerBook, data: AllData, from: string, to:
         { caption: 'Cost at the end of the year', current: closing, prior: opening },
         { caption: 'Accumulated depreciation at the beginning of the year', current: accOpening, prior: 0 },
         { caption: 'Depreciation charge for the year', current: charge, prior: 0 },
+        ...(deprRemoved ? [{ caption: 'Accumulated depreciation on disposals', current: deprRemoved, prior: 0 }] : []),
         { caption: 'Accumulated depreciation at the end of the year', current: accClosing, prior: accOpening },
         {
           caption: 'Carrying amount at the end of the year',
@@ -105,6 +126,9 @@ export function noteSchedules(book: LedgerBook, data: AllData, from: string, to:
                 : `straight line method over ${a.useful_life_months} months`
             }${a.residual_value ? `, to a residual value of R${a.residual_value.toFixed(2)}` : ''}, from ${a.depr_start}.`,
         ),
+        ...(disposedNames.length
+          ? [`${disposedNames.join(', ')} ${disposedNames.length === 1 ? 'was' : 'were'} disposed of during the year. The gain or loss on disposal is recognised in profit or loss.`]
+          : []),
         ...(notDepreciating.length
           ? [
               `No depreciation has been raised on ${notDepreciating
