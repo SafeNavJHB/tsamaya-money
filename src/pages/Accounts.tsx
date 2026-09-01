@@ -22,6 +22,12 @@ function AccountForm({ initial, onClose }: { initial?: Account | null; onClose: 
   const [kind, setKind] = useState<AccountKind>(initial?.kind ?? 'bank');
   const [opening, setOpening] = useState(initial ? String(initial.opening_balance) : '0');
   const [archived, setArchived] = useState(initial?.archived ?? false);
+  const [bsLine, setBsLine] = useState(initial?.bs_line ?? '');
+  const [isCurrent, setIsCurrent] = useState(initial?.is_current ?? true);
+  const [isCash, setIsCash] = useState<'auto' | 'yes' | 'no'>(
+    initial?.is_cash == null ? 'auto' : initial.is_cash ? 'yes' : 'no',
+  );
+  const [cfClass, setCfClass] = useState(initial?.cf_class ?? 'operating');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +40,16 @@ function AccountForm({ initial, onClose }: { initial?: Account | null; onClose: 
     const ob = parseAmount(opening || '0');
     if (ob == null) return setError('Opening balance must be a number (negative allowed for cards).');
     setBusy(true);
-    const row = { name: name.trim(), kind, opening_balance: ob, archived };
+    const row = {
+      name: name.trim(),
+      kind,
+      opening_balance: ob,
+      archived,
+      bs_line: bsLine.trim() || null,
+      is_current: isCurrent,
+      is_cash: isCash === 'auto' ? null : isCash === 'yes',
+      cf_class: cfClass,
+    };
     const q = initial
       ? supabase.from('fin_accounts').update(row).eq('id', initial.id)
       : supabase.from('fin_accounts').insert(row);
@@ -74,6 +89,43 @@ function AccountForm({ initial, onClose }: { initial?: Account | null; onClose: 
       <Field label="Opening balance (R)">
         <input inputMode="decimal" value={opening} onChange={(e) => setOpening(e.target.value)} />
       </Field>
+
+      <h3 style={{ margin: '14px 0 8px' }}>Financial statement presentation</h3>
+      <Field label="Balance sheet caption">
+        <input
+          value={bsLine}
+          onChange={(e) => setBsLine(e.target.value)}
+          placeholder="e.g. Cash and cash equivalents"
+        />
+      </Field>
+      <p className="small muted" style={{ marginTop: -6 }}>
+        Accounts sharing a caption are aggregated into one line. Whether it sits under assets or liabilities follows
+        the balance, so an overdrawn account moves across on its own.
+      </p>
+      <Field label="Classification">
+        <select value={isCurrent ? 'current' : 'non'} onChange={(e) => setIsCurrent(e.target.value === 'current')}>
+          <option value="current">Current</option>
+          <option value="non">Non-current</option>
+        </select>
+      </Field>
+      <Field label="Cash and cash equivalents?">
+        <select value={isCash} onChange={(e) => setIsCash(e.target.value as 'auto' | 'yes' | 'no')}>
+          <option value="auto">Automatic (bank, cash and savings count as cash)</option>
+          <option value="yes">Yes — include in cash</option>
+          <option value="no">No</option>
+        </select>
+      </Field>
+      <Field label="Cash flow activity">
+        <select value={cfClass ?? 'operating'} onChange={(e) => setCfClass(e.target.value as typeof cfClass)}>
+          <option value="operating">Operating (working capital)</option>
+          <option value="investing">Investing</option>
+          <option value="financing">Financing (loans, capital)</option>
+        </select>
+      </Field>
+      <p className="small muted" style={{ marginTop: -6 }}>
+        Where this account's movement appears on the statement of cash flows. A director loan is financing; a
+        prepayment or deposit is operating.
+      </p>
       {initial && (
         <label className="row small" style={{ marginBottom: 12, cursor: 'pointer' }}>
           <input type="checkbox" style={{ width: 'auto' }} checked={archived} onChange={(e) => setArchived(e.target.checked)} />

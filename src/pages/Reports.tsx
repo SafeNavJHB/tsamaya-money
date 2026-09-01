@@ -10,6 +10,7 @@ import { exportPdf } from '../export/pdf';
 import type { PdfTableSpec } from '../export/pdf';
 import { stamp } from '../export/download';
 import { BalanceSheetTab, EquityTab } from './statements';
+import { AfsPackButton, CashflowStatementTab, NotesTab } from './afs';
 import {
   accountLedger,
   budgetRows,
@@ -31,7 +32,7 @@ import {
   todayStr,
 } from '../lib/format';
 
-type Tab = 'statement' | 'sofp' | 'socie' | 'cashflow' | 'networth' | 'budgets' | 'ledger';
+type Tab = 'statement' | 'sofp' | 'socie' | 'cashflowstmt' | 'notes' | 'cashflow' | 'networth' | 'budgets' | 'ledger';
 
 interface ExportSet {
   filename: string;
@@ -110,6 +111,7 @@ export function Reports() {
       <div className="row wrap">
         <h1>Reports</h1>
         <div className="spacer" />
+        <AfsPackButton />
         <button
           className="btn small"
           onClick={() =>
@@ -165,7 +167,9 @@ export function Reports() {
             { value: 'statement', label: 'Income statement' },
             { value: 'sofp', label: 'Balance sheet' },
             { value: 'socie', label: 'Equity (SOCIE)' },
-            { value: 'cashflow', label: 'Cash flow' },
+            { value: 'cashflowstmt', label: 'Cash flows' },
+            { value: 'notes', label: 'Notes' },
+            { value: 'cashflow', label: 'Monthly flows' },
             { value: 'networth', label: 'Net worth' },
             { value: 'budgets', label: 'Budgets' },
             { value: 'ledger', label: 'Ledger' },
@@ -178,6 +182,8 @@ export function Reports() {
       {tab === 'statement' && <StatementTab />}
       {tab === 'sofp' && <BalanceSheetTab />}
       {tab === 'socie' && <EquityTab />}
+      {tab === 'cashflowstmt' && <CashflowStatementTab />}
+      {tab === 'notes' && <NotesTab />}
       {tab === 'cashflow' && <CashflowTab />}
       {tab === 'networth' && <NetWorthTab />}
       {tab === 'budgets' && <BudgetsTab />}

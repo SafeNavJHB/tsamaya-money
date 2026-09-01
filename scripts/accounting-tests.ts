@@ -5,7 +5,9 @@
 // equalling credits, or the balance sheet stops balancing, this fails loudly.
 import { buildBook, tAccount, trialBalance, profitForPeriod, balanceAt, SHARE_CAPITAL } from '../src/logic/ledger';
 import { financialYearFor, priorYear, socie, sofp } from '../src/logic/statements';
-import { incomeStatement, monthlyCashflow } from '../src/logic/compute';
+import { incomeStatement, monthlyCashflow, round2 } from '../src/logic/compute';
+import { cashflowStatement, isCashAccount } from '../src/logic/cashflow';
+import { noteSchedules } from '../src/logic/notes';
 import type { Account, AllData, Asset, Category, EquityMovement, Settings, Tx } from '../src/types';
 
 let failures = 0;
@@ -35,6 +37,12 @@ const tx = (p: Partial<Tx> & Pick<Tx, 'tx_date' | 'kind' | 'amount' | 'account_i
 const acct = (id: string, name: string, bs: string, current = true, opening = 0): Account => ({
   id, name, kind: 'bank', opening_balance: opening, sort: 0, archived: false, bs_line: bs, is_current: current,
 });
+// A director loan is not cash and is a financing flow — mirroring the live data,
+// where it is kind='other' with is_cash=false.
+const loanAcct = (id: string, name: string, bs: string): Account => ({
+  id, name, kind: 'other', opening_balance: 0, sort: 1, archived: false, bs_line: bs, is_current: true,
+  is_cash: false, cf_class: 'financing',
+});
 const cate = (id: string, name: string, kind: 'income' | 'expense'): Category => ({
   id, name, kind, monthly_budget: null, sort: 0, archived: false,
 });
@@ -51,7 +59,7 @@ const equity: EquityMovement[] = [
 ];
 
 const data: AllData = {
-  accounts: [acct('bank', 'Bank', 'Cash and cash equivalents'), acct('loan', 'Director loan', 'Loan from director')],
+  accounts: [acct('bank', 'Bank', 'Cash and cash equivalents'), loanAcct('loan', 'Director loan', 'Loan from director')],
   categories: [cate('sales', 'Revenue', 'income'), cate('sub', 'Subscriptions', 'expense')],
   assets: [asst('laptop', 'Laptop', 'asset', 'Property, plant and equipment', false)],
   valuations: [{ id: 'v1', asset_id: 'laptop', val_date: '2027-02-28', value: 15000 }],
@@ -65,7 +73,7 @@ const data: AllData = {
     // falls in the NEXT financial year — must not touch FY2027
     tx({ tx_date: '2027-04-01', kind: 'income', amount: 9999, category_id: 'sales', account_id: 'bank' }),
   ],
-  recurring: [], importRules: [], equity, settings,
+  recurring: [], importRules: [], equity, settings, notes: [],
 };
 
 const book = buildBook(data);
@@ -180,6 +188,71 @@ eq(
   0,
   'the cash-flow chart also excludes capitalised spend, so the surfaces agree',
 );
+
+console.log('\nstatement of cash flows');
+const cf = cashflowStatement(book, data, fy.from, fy.to);
+ok(cf.reconciles, `cash flow reconciles to the movement in cash (difference ${cf.difference})`);
+eq(cf.openingCash, 0, 'opening cash');
+eq(cf.closingCash, -16000, 'closing cash equals the bank balance');
+eq(cf.netMovement, -16000, 'net movement in cash');
+eq(round2(cf.netOperating + cf.netInvesting + cf.netFinancing), cf.closingCash - cf.openingCash,
+  'the three activity totals sum to the actual movement in cash');
+eq(cf.investing.find((l) => l.caption.startsWith('Acquisition'))?.amount, -20000,
+  'the capitalised laptop is an investing outflow, not an operating expense');
+eq(cf.financing.find((l) => l.caption === 'Proceeds from issue of share capital')?.amount, 1000,
+  'share issue is a financing inflow');
+eq(cf.financing.find((l) => l.caption === 'Dividends declared')?.amount, -300, 'dividend is a financing outflow');
+eq(cf.operating[0].amount, 3000, 'operating opens with the profit for the period');
+eq(cf.components.map((c) => c.name), ['Bank'], 'cash components disclosed (Section 7.20)');
+// the director loan is classed financing in this fixture only if set; default
+// is operating, so assert the default lands somewhere and still reconciles
+ok(
+  [...cf.operating, ...cf.investing, ...cf.financing].every((l) => Number.isFinite(l.amount)),
+  'every cash flow line carries a finite amount',
+);
+
+// A second year must reconcile too, opening at the prior closing cash.
+const cf2 = cashflowStatement(book, data, fy2.from, fy2.to);
+ok(cf2.reconciles, 'second-year cash flow reconciles');
+eq(cf2.openingCash, -16000, 'second year opens at the prior closing cash');
+eq(cf2.closingCash, -6001, 'second year closing cash');
+
+// Classification must not change the total, only where it appears.
+const reclassified = {
+  ...data,
+  accounts: data.accounts.map((a) => (a.id === 'loan' ? { ...a, cf_class: 'investing' as const } : a)),
+};
+const cf3 = cashflowStatement(buildBook(reclassified), reclassified, fy.from, fy.to);
+ok(cf3.reconciles, 'reclassifying an account keeps the statement reconciled');
+eq(cf3.netMovement, cf.netMovement, 'reclassification moves a line between sections, it does not change the total');
+ok(
+  cf.financing.some((l) => l.caption.toLowerCase().includes('loan from director')),
+  'the director loan movement appears under financing',
+);
+ok(
+  cf3.investing.some((l) => l.caption.toLowerCase().includes('loan from director')),
+  'reclassifying it to investing moves the line to investing',
+);
+// The cash inference itself: an account with no explicit flag follows its kind.
+eq(isCashAccount({ ...acct('x', 'Savings', 'Cash'), kind: 'savings' }), true, 'a savings account defaults to cash');
+eq(isCashAccount({ ...acct('x', 'Other', 'Other'), kind: 'other' }), false, "kind 'other' does not default to cash");
+eq(isCashAccount({ ...acct('x', 'Bank', 'Cash'), is_cash: false }), false, 'an explicit flag overrides the kind');
+
+console.log('\nnotes');
+const scheds = noteSchedules(book, data, fy.from, fy.to);
+const ppeNote = scheds.find((s) => s.key === 'ppe');
+ok(!!ppeNote, 'a PPE note is produced when there are capitalised assets');
+eq(ppeNote?.rows.find((r) => r.caption === 'Additions')?.current, 20000, 'PPE additions equal the capitalised cost');
+eq(ppeNote?.rows.find((r) => r.isTotal)?.current, 20000, 'PPE closing carrying amount ties to the balance sheet');
+ok(
+  (ppeNote?.commentary ?? []).some((c) => c.includes('memorandum')),
+  'the note states the R15 000 valuation is memorandum only, not the carrying amount',
+);
+ok((ppeNote?.commentary ?? []).some((c) => c.includes('depreciation')), 'the note flags that no depreciation is raised');
+const shareNote = scheds.find((s) => s.key === 'share_capital');
+eq(shareNote?.rows[0].current, 1000, 'share capital note ties to the SoFP');
+const cashNote = scheds.find((s) => s.key === 'cash');
+eq(cashNote?.rows.find((r) => r.isTotal)?.current, -16000, 'cash note ties to the cash flow statement closing cash');
 
 console.log('\nedge cases');
 const emptyBook = buildBook({ ...data, transactions: [], equity: [], assets: [], valuations: [] });

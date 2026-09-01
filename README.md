@@ -39,6 +39,7 @@ Beancount accounts map onto this app's model like this:
 | [`sql/02_recurring_and_import.sql`](sql/02_recurring_and_import.sql) | recurring series, import rules, transaction provenance |
 | [`sql/03_company_setup.sql`](sql/03_company_setup.sql) | company chart of accounts + the confirmed history from the reconstruction sheets |
 | [`sql/04_ifrs_statements.sql`](sql/04_ifrs_statements.sql) | equity movements, entity settings, balance-sheet classification, capitalisation |
+| [`sql/05_cashflow_and_notes.sql`](sql/05_cashflow_and_notes.sql) | cash/activity classification per account, narrative notes |
 
 All applied against the live database. To add a member: insert their auth uid
 into `fin_members` via SQL.
@@ -96,8 +97,36 @@ Presentation decisions worth knowing:
 
 The test suite asserts the identities rather than the arithmetic: every entry
 balances, the trial balance balances, assets = liabilities + equity in
-consecutive years, SOCIE closing equity ties to the balance sheet, and the two
-independently-computed income statements agree.
+consecutive years, SOCIE closing equity ties to the balance sheet, the cash
+flow statement reconciles to the actual movement in cash, note schedules tie to
+the face of the statements, and the two independently-computed income
+statements agree.
+
+### Cash flows and notes
+
+The **statement of cash flows** (Section 7) uses the indirect method, and the
+reconciliation is not computed twice and compared — it falls out of double
+entry. Over any period, summing (debits − credits) across every account is
+zero, so `Δcash = profit − Δ(other balance-sheet) − Δ(equity)`. Each term is
+then presented under operating, investing or financing per the account's
+`cf_class`. If `reconciles` ever goes false, a classification is missing rather
+than the arithmetic being wrong.
+
+Which accounts count as **cash** is explicit (`fin_accounts.is_cash`, null =
+derive from `kind`), because guessing would misclassify the director loan and
+the CIPC deposit — both `kind='other'`. Both settings are editable per account
+on the Accounts page.
+
+The **notes** (Section 8) are split deliberately: the figures are computed from
+the ledger so a note cannot disagree with the statement it supports, while the
+wording lives in `fin_notes` and is edited by the preparer — an accounting
+policy and a going-concern conclusion are professional judgements and are not
+generated. Seeded text is a starting draft; any note still containing a
+`[bracketed placeholder]` is flagged in red on the Notes tab and must be
+resolved before the statements are issued.
+
+**Full AFS pack (PDF)** on the Reports page emits the balance sheet, income
+statement, SOCIE, cash flow statement and all notes as one document.
 
 ## Development
 

@@ -9,6 +9,7 @@ import type {
   EquityMovement,
   ImportRule,
   RecurringRule,
+  NarrativeNote,
   Settings,
   Tx,
   Valuation,
@@ -38,6 +39,7 @@ const empty: AllData = {
   importRules: [],
   equity: [],
   settings: DEFAULT_SETTINGS,
+  notes: [],
 };
 
 const DataContext = createContext<DataState | null>(null);
@@ -51,7 +53,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     setError(null);
-    const [cats, accs, txns, assets, vals, recur, rules, equity, setts] = await Promise.all([
+    const [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes] = await Promise.all([
       supabase.from('fin_categories').select('*').order('sort').order('name'),
       supabase.from('fin_accounts').select('*').order('sort').order('name'),
       supabase.from('fin_transactions').select('*').order('tx_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -61,8 +63,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('fin_import_rules').select('*').order('match_text'),
       supabase.from('fin_equity').select('*').order('mv_date'),
       supabase.from('fin_settings').select('*').maybeSingle(),
+      supabase.from('fin_notes').select('*').order('sort'),
     ]);
-    const firstError = [cats, accs, txns, assets, vals, recur, rules, equity, setts].find((r) => r.error)?.error;
+    const firstError = [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes].find((r) => r.error)?.error;
     if (firstError) {
       setError(firstError.message);
       setLoading(false);
@@ -81,6 +84,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       importRules: rules.data as ImportRule[],
       equity: (equity.data as EquityMovement[]).map((e) => ({ ...e, amount: num(e.amount) })),
       settings: (setts.data as Settings | null) ?? DEFAULT_SETTINGS,
+      notes: notes.data as NarrativeNote[],
     });
     setLoading(false);
   }, []);

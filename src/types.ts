@@ -25,6 +25,10 @@ export interface Account {
   /** Statement of financial position caption (IFRS for SMEs Section 4). */
   bs_line?: string | null;
   is_current?: boolean;
+  /** Cash and cash equivalents. Null means derive from `kind`. */
+  is_cash?: boolean | null;
+  /** Cash flow classification (Section 7). Defaults to operating. */
+  cf_class?: 'operating' | 'investing' | 'financing' | null;
 }
 
 export interface Tx {
@@ -84,6 +88,8 @@ export interface Asset {
   archived: boolean;
   bs_line?: string | null;
   is_current?: boolean;
+  /** Cash flow classification (Section 7). Defaults to investing for assets. */
+  cf_class?: 'operating' | 'investing' | 'financing' | null;
 }
 
 export type EquityKind = 'share_issue' | 'dividend' | 'prior_period_adjustment';
@@ -123,4 +129,14 @@ export interface AllData {
   importRules: ImportRule[];
   equity: EquityMovement[];
   settings: Settings;
+  notes: NarrativeNote[];
+}
+
+export interface NarrativeNote {
+  id: string;
+  note_key: string;
+  title: string;
+  body: string;
+  sort: number;
+  hidden: boolean;
 }
