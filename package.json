@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "tsx scripts/logic-tests.ts && tsx scripts/accounting-tests.ts && tsx scripts/depreciation-tests.ts && tsx scripts/disposal-tests.ts"
+    "test": "tsx scripts/logic-tests.ts && tsx scripts/accounting-tests.ts && tsx scripts/depreciation-tests.ts && tsx scripts/disposal-tests.ts && tsx scripts/openbanking-tests.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

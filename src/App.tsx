@@ -14,6 +14,7 @@ import { Ledger } from './pages/Ledger';
 import { DepreciationRegister } from './pages/Register';
 import { Journals } from './pages/Journals';
 import { Settings } from './pages/Settings';
+import { BankFeed } from './pages/BankFeed';
 import { useAutoPost } from './data/useAutoPost';
 import { APP_NAME } from './config';
 
@@ -48,6 +49,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     { to: '/register', label: 'Depreciation' },
     { to: '/journals', label: 'Journals' },
     { to: '/import', label: 'Import' },
+    { to: '/bank', label: 'Bank feed' },
   ];
   return (
     <>
@@ -116,6 +118,9 @@ function More() {
         </NavLink>
         <NavLink className="btn" style={{ width: '100%' }} to="/import">
           Import bank statement
+        </NavLink>
+        <NavLink className="btn" style={{ width: '100%' }} to="/bank">
+          Bank feed (Nedbank)
         </NavLink>
         <NavLink className="btn" style={{ width: '100%' }} to="/categories">
           Categories & budgets
@@ -190,6 +195,7 @@ export default function App() {
             <Route path="/ledger" element={<Ledger />} />
             <Route path="/register" element={<DepreciationRegister />} />
             <Route path="/journals" element={<Journals />} />
+            <Route path="/bank" element={<BankFeed />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/more" element={<More />} />
             <Route path="*" element={<Navigate to="/" replace />} />

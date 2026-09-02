@@ -42,6 +42,7 @@ Beancount accounts map onto this app's model like this:
 | [`sql/05_cashflow_and_notes.sql`](sql/05_cashflow_and_notes.sql) | cash/activity classification per account, narrative notes |
 | [`sql/06_depreciation.sql`](sql/06_depreciation.sql) | fixed asset settings and the posted depreciation register |
 | [`sql/07_disposals_journals_lock.sql`](sql/07_disposals_journals_lock.sql) | asset disposals, manual journal entries, period locking |
+| [`sql/08_bank_feed.sql`](sql/08_bank_feed.sql) | Nedbank bank feed: connections, staged transactions, service-role-only tokens |
 
 All applied against the live database. To add a member: insert their auth uid
 into `fin_members` via SQL.
@@ -177,6 +178,27 @@ rejects an entry that does not balance or has fewer than two lines, so an
 unbalanced journal cannot exist even if written straight to the API. A line
 referencing an unknown account key is surfaced as an "Unrecognised account"
 rather than dropped, because dropping it would unbalance the books silently.
+
+### Bank feed (Nedbank)
+
+Pulls transactions from the **Nedbank API Marketplace**, which serves the UK
+Open Banking v3.1 AISP shape. **Built and tested, not yet connected** —
+credentials need Nedbank's approval. Full runbook: [`docs/NEDBANK.md`](docs/NEDBANK.md).
+
+The sync runs in a Supabase Edge Function
+([`supabase/functions/nedbank-sync`](supabase/functions/nedbank-sync/index.ts)),
+never in the browser: every Nedbank call carries `x-ibm-client-secret`, and
+this is a static site, so a bundled secret is a published secret. Tokens live
+in `fin_bank_secrets` — RLS on, **no policies and no grant** to `authenticated`
+— so only the service role can read them.
+
+Fetched rows land in `fin_bank_feed` as `pending` and are reviewed on the Bank
+feed screen before becoming ledger entries, the same discipline as the CSV
+importer. Only `Booked` transactions are taken. Re-syncing an overlapping
+window is genuinely idempotent thanks to a unique index on the bank's own
+`TransactionId` — a stronger guarantee than the CSV importer's date/amount
+heuristic. Amounts parse strictly: a regression test pins that `"1 932,07"` is
+rejected rather than silently becoming `193207`.
 
 ### Closing a period
 

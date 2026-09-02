@@ -102,6 +102,35 @@ export interface Asset {
   asset_class?: string | null;
 }
 
+export interface BankConnection {
+  id: string;
+  provider: string;
+  label: string;
+  provider_account_id: string;
+  account_id: string | null;
+  consent_id: string | null;
+  consent_expires_at: string | null;
+  status: 'pending' | 'active' | 'expired' | 'revoked' | 'error';
+  last_synced_at: string | null;
+  last_sync_error: string | null;
+}
+
+export interface BankFeedRow {
+  id: string;
+  connection_id: string | null;
+  provider: string;
+  provider_tx_id: string;
+  account_id: string | null;
+  booked_on: string;
+  amount: number;
+  direction: 'credit' | 'debit';
+  description: string | null;
+  reference: string | null;
+  balance_after: number | null;
+  status: 'pending' | 'imported' | 'ignored';
+  transaction_id: string | null;
+}
+
 export interface Disposal {
   id: string;
   asset_id: string;
@@ -183,6 +212,8 @@ export interface AllData {
   depreciation: DepreciationCharge[];
   disposals: Disposal[];
   journals: Journal[];
+  bankConnections: BankConnection[];
+  bankFeed: BankFeedRow[];
 }
 
 export interface NarrativeNote {

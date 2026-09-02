@@ -46,7 +46,7 @@ const tx = (p: Partial<Tx> & Pick<Tx, 'tx_date' | 'kind' | 'amount' | 'account_i
 const base: AllData = {
   accounts: [bank], categories: [], assets: [laptop], valuations: [],
   transactions: [tx({ tx_date: '2026-07-01', kind: 'expense', amount: 37000, account_id: 'bank', asset_id: 'laptop' })],
-  recurring: [], importRules: [], equity: [], settings, notes: [], depreciation: [], disposals: [], journals: [],
+  recurring: [], importRules: [], equity: [], settings, notes: [], depreciation: [], disposals: [], journals: [], bankConnections: [], bankFeed: [],
 };
 const costAt = (assetId: string, date: string) =>
   base.transactions.filter((t) => t.asset_id === assetId && t.tx_date <= date).reduce((s, t) => s + t.amount, 0);

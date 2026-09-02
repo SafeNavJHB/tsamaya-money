@@ -64,7 +64,7 @@ const baseData: AllData = {
   accounts: [bank], categories: [], assets: [laptop], valuations: [],
   transactions: [tx({ tx_date: '2026-03-01', kind: 'expense', amount: 36000, account_id: 'bank', asset_id: 'laptop' })],
   recurring: [], importRules: [], equity: [], settings, notes: [],
-  depreciation: charges, disposals: [], journals: [],
+  depreciation: charges, disposals: [], journals: [], bankConnections: [], bankFeed: [],
 };
 
 function withDisposal(proceeds: number, intoCash = true): AllData {

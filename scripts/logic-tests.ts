@@ -146,6 +146,8 @@ const data: AllData = {
   depreciation: [],
   disposals: [],
   journals: [],
+  bankConnections: [],
+  bankFeed: [],
 };
 eq(latestValuation(data.valuations, 'car', '2026-08-31')?.value, 250000, 'valuation as-of picks earlier');
 const nw = netWorthAt(data, '2026-09-30');

@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import type {
   Account,
   AllData,
+  BankConnection,
+  BankFeedRow,
   Asset,
   Category,
   DepreciationCharge,
@@ -47,6 +49,8 @@ const empty: AllData = {
   depreciation: [],
   disposals: [],
   journals: [],
+  bankConnections: [],
+  bankFeed: [],
 };
 
 const DataContext = createContext<DataState | null>(null);
@@ -60,7 +64,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     setError(null);
-    const [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes, depr, disp, jrnl] = await Promise.all([
+    const [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes, depr, disp, jrnl, conns, feed] = await Promise.all([
       supabase.from('fin_categories').select('*').order('sort').order('name'),
       supabase.from('fin_accounts').select('*').order('sort').order('name'),
       supabase.from('fin_transactions').select('*').order('tx_date', { ascending: false }).order('created_at', { ascending: false }),
@@ -74,8 +78,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       supabase.from('fin_depreciation').select('*').order('period_end'),
       supabase.from('fin_disposals').select('*').order('disposal_date'),
       supabase.from('fin_journals').select('*, lines:fin_journal_lines(*)').order('entry_date'),
+      supabase.from('fin_bank_connections').select('*').order('created_at'),
+      supabase.from('fin_bank_feed').select('*').order('booked_on', { ascending: false }).limit(500),
     ]);
-    const firstError = [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes, depr, disp, jrnl].find((r) => r.error)?.error;
+    const firstError = [cats, accs, txns, assets, vals, recur, rules, equity, setts, notes, depr, disp, jrnl, conns, feed].find((r) => r.error)?.error;
     if (firstError) {
       setError(firstError.message);
       setLoading(false);
@@ -97,6 +103,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       notes: notes.data as NarrativeNote[],
       depreciation: (depr.data as DepreciationCharge[]).map((d) => ({ ...d, amount: num(d.amount) })),
       disposals: (disp.data as Disposal[]).map((d) => ({ ...d, proceeds: num(d.proceeds) })),
+      bankConnections: conns.data as BankConnection[],
+      bankFeed: (feed.data as BankFeedRow[]).map((f) => ({
+        ...f,
+        amount: num(f.amount),
+        balance_after: f.balance_after == null ? null : num(f.balance_after),
+      })),
       journals: (jrnl.data as Journal[]).map((j) => ({
         ...j,
         lines: (j.lines ?? []).map((l: JournalLine) => ({ ...l, debit: num(l.debit), credit: num(l.credit) })),
