@@ -46,17 +46,34 @@ only the service role can read it, so even a signed-in browser cannot.
 
 ### 1. Get credentials (you)
 
-1. Register at **<https://apim.nedbank.co.za>** and create an application.
-   You get a **client ID** and **client secret**, and sandbox access immediately.
-2. Subscribe the app to the **Nedbank Authorisation API** (required for OAuth on
-   every other product) and to either:
-   - **Business Transactions API** — built for exactly this: transactions and
-     balances on Nedbank *business* current and savings accounts; or
-   - **Accounts API** — the general Open Banking AISP product.
-3. Ask Nedbank to move the app from **sandbox to production** against the
-   business current account. Production access is *requested, reviewed and
-   approved* by Nedbank and they assign a relationship manager. Budget real
-   calendar time for this — it is not self-service.
+There is **no self-service signup**. Nedbank's own guide sets out four steps,
+and credentials do not appear until step 3:
+
+1. **Register your interest** at <https://apim.nedbank.co.za> ("Register your
+   interest" in the top nav). This is the account-creation route, not just a
+   sales enquiry.
+2. **Due diligence.** Nedbank reviews the request and a specialist makes
+   contact. On approval you get an activation email and a portal login. Have
+   the company registration details and director ID ready; this step takes
+   calendar time, not minutes.
+3. **Create your app** on the portal. *This* is where the **client ID** and
+   **client secret** are shown.
+4. **Subscribe the app** to the **Nedbank Authorisation API** (required for
+   OAuth on every other product) plus:
+   - **Business Transactions API** (`accounts-b2b`) — the right one here:
+     transactions and balances on your *own* Nedbank business current and
+     savings accounts, pitched at automated reconciliation; or
+   - **Accounts API** — the general Open Banking AISP product, framed for
+     third-party providers reading *other people's* accounts with consent.
+
+Then ask Nedbank to move the app from **sandbox to production** against the
+business current account. Production is *requested, reviewed and approved* by
+them with a relationship manager.
+
+⚠ On the interest form the "Which API will you primarily use?" dropdown does
+**not** list the Business Transactions API, and does **not** lock you in: you
+choose products in step 4. Pick **Accounts API** (the family it belongs to) and
+name the Business Transactions API in the free-text box so it routes correctly.
 
 ### 2. Set the secrets (never committed, never in the bundle)
 
