@@ -43,6 +43,7 @@ Beancount accounts map onto this app's model like this:
 | [`sql/06_depreciation.sql`](sql/06_depreciation.sql) | fixed asset settings and the posted depreciation register |
 | [`sql/07_disposals_journals_lock.sql`](sql/07_disposals_journals_lock.sql) | asset disposals, manual journal entries, period locking |
 | [`sql/08_bank_feed.sql`](sql/08_bank_feed.sql) | Nedbank bank feed: connections, staged transactions, service-role-only tokens |
+| [`sql/09_bank_link_state.sql`](sql/09_bank_link_state.sql) | pending OAuth link states for the one-click bank connect |
 
 All applied against the live database. To add a member: insert their auth uid
 into `fin_members` via SQL.

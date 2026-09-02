@@ -23,6 +23,35 @@ export function BankFeed() {
   const [note, setNote] = useState<string | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [ticked, setTicked] = useState<Record<string, boolean>>({});
+  const [linking, setLinking] = useState(false);
+
+  // The link function bounces the browser back here with the outcome.
+  const linkOutcome = useMemo(() => {
+    const q = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+    const linked = q.get('linked');
+    return linked ? { ok: linked === 'ok', message: q.get('m') ?? '' } : null;
+  }, []);
+
+  async function connectBank() {
+    setLinking(true);
+    setError(null);
+    try {
+      const { data: session } = await supabase.auth.getSession();
+      const token = session.session?.access_token;
+      if (!token) throw new Error('Not signed in.');
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/nedbank-link`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.authorizeUrl) throw new Error(body.error ?? `Could not start the link (${res.status}).`);
+      // Nedbank's own page handles the login; we never see those credentials.
+      window.location.href = body.authorizeUrl as string;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setLinking(false);
+    }
+  }
 
   const pending = useMemo(
     () => bankFeed.filter((f) => f.status === 'pending').sort((a, b) => b.booked_on.localeCompare(a.booked_on)),
@@ -141,11 +170,17 @@ export function BankFeed() {
       <div className="row wrap">
         <h1>Bank feed</h1>
         <div className="spacer" />
-        <button className="btn primary" onClick={syncNow} disabled={busy}>
+        <button className="btn" onClick={connectBank} disabled={linking}>
+          {linking ? 'Starting…' : bankConnections.length ? 'Re-link bank' : 'Connect Nedbank'}
+        </button>
+        <button className="btn primary" onClick={syncNow} disabled={busy || bankConnections.length === 0}>
           {busy ? 'Syncing…' : 'Sync now'}
         </button>
       </div>
 
+      {linkOutcome && (
+        <div className={linkOutcome.ok ? 'card small' : 'error-banner'}>{linkOutcome.message}</div>
+      )}
       {error && <div className="error-banner">{error}</div>}
       {note && <div className="card small">{note}</div>}
 
@@ -174,6 +209,12 @@ export function BankFeed() {
           <p className="small muted">
             The credentials are then set as Supabase function secrets, never in this page: the site is static, so
             anything in the bundle is public. See <code>docs/NEDBANK.md</code> for the exact commands.
+          </p>
+          <p className="small muted">
+            When registering the app, the <strong>redirect URI</strong> to enter is{' '}
+            <code>{SUPABASE_URL}/functions/v1/nedbank-link/callback</code>. Once the secrets are set, press
+            <strong> Connect Nedbank</strong> above and approve in your own Nedbank login: the whole consent flow
+            runs itself from there.
           </p>
         </div>
       ) : (

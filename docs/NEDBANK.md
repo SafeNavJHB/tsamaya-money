@@ -72,28 +72,62 @@ Swap `NEDBANK_BASE` to the production base Nedbank gives you when approved.
 supabase functions deploy nedbank-sync --project-ref uthvorhglqysehayyxzy
 ```
 
-### 4. Authorise the consent (you, once)
+### 4. Press **Connect Nedbank** (you, once)
 
-This is the step where you log in to Nedbank. **Your banking credentials go to
-Nedbank and nowhere else** — this app never sees them, and neither does anyone
-helping you build it. The flow, per Nedbank's docs:
+Open the Bank feed screen and press **Connect Nedbank**. That is the whole
+step: `nedbank-link` runs the entire consent dance for you.
 
-1. `POST /nboauth/oauth20/token` with `grant_type=client_credentials` → a
-   **light** token.
-2. `POST /open-banking/v3.1/aisp/account-access-consents` with permissions
-   `ReadAccountsDetail`, `ReadBalances`, `ReadTransactionsDetail`,
-   `ReadTransactionsCredits`, `ReadTransactionsDebits` → a `ConsentId` and an
-   `SCARedirectURL`.
-3. Open the `SCARedirectURL` and approve in your Nedbank login → you are
-   returned with `?code=...`.
-4. `POST /nboauth/oauth20/token` with `grant_type=authorization_code` → the
-   **heavy** token and a refresh token.
-5. Store the refresh token in `fin_bank_secrets` and insert a row in
-   `fin_bank_connections` with the bank's `AccountId`, `status='active'`, and
-   the app account it posts to (the Bank feed screen sets that mapping).
+**Your banking credentials go to Nedbank's own page and nowhere else.** They
+never pass through this app, the Edge Function, or the database.
 
-From then on the function refreshes the heavy token itself, and **Sync now** on
-the Bank feed screen is all you touch.
+What runs behind that button, per Nedbank's documented flow:
+
+1. `grant_type=client_credentials` → a **light** token.
+2. `POST /open-banking/v3.1/aisp/account-access-consents` with read-only
+   permissions (`ReadAccountsDetail`, `ReadBalances`, `ReadTransactionsDetail`,
+   `ReadTransactionsCredits`, `ReadTransactionsDebits`) → a `ConsentId` and an
+   `SCARedirectURL`. **No payment permission is ever requested**, so the
+   connection cannot move money even if it were misused.
+3. You are sent to Nedbank to approve, and returned to
+   `/functions/v1/nedbank-link/callback?code=…&state=…`.
+4. The `state` is checked against `fin_bank_link_states` (service-role only, so
+   a client can neither read nor forge one). This both proves the callback is
+   ours and says which user it belongs to, since the bank's redirect carries no
+   Supabase session.
+5. `grant_type=authorization_code` → the heavy token and refresh token, stored
+   in `fin_bank_secrets`. `/accounts` is read and a connection row created per
+   account, labelled with the last four digits only.
+
+Then map each connection to one of your accounts on the Bank feed screen. From
+there the function refreshes tokens itself and **Sync now** is all you touch.
+
+### The redirect URI to register
+
+When you create the app on the Nedbank portal it asks for a redirect URI. Use
+exactly:
+
+```
+https://uthvorhglqysehayyxzy.supabase.co/functions/v1/nedbank-link/callback
+```
+
+## What it costs
+
+Nedbank publishes **no pricing** for the API Marketplace: there is nothing on
+the marketplace site and nothing in the
+[API Marketplace terms and conditions](https://personal.nedbank.co.za/legal/terms-and-conditions/api-marketplace.html).
+
+- Registration and the **sandbox** are self-service with no payment step
+  documented anywhere, and Nedbank describes the sandbox as risk-free testing,
+  so this part is almost certainly free.
+- **Production** goes through a sales consultant and a relationship manager,
+  which is the shape of an arrangement where commercial terms are set per
+  client. Treat production pricing as unknown until they tell you.
+
+Ask them directly, in writing:
+
+> Is there any fee, once-off or recurring, for production access to the
+> Business Transactions API (or the Accounts API) for a single business current
+> account? Are there call-volume limits or charges beyond a free tier?
 
 ## Endpoints used
 
@@ -102,6 +136,7 @@ the Bank feed screen is all you touch.
 | Token (light, heavy, refresh) | `/nboauth/oauth20/token` |
 | Authorise | `/nboauth/oauth20/authorize` |
 | Create consent | `/open-banking/v3.1/aisp/account-access-consents` |
+| Link callback (ours) | `/functions/v1/nedbank-link/callback` |
 | Accounts | `/open-banking/v3.1/aisp/accounts` |
 | Transactions | `/open-banking/v3.1/aisp/accounts/{AccountId}/transactions` |
 
