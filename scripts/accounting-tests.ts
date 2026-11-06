@@ -3,7 +3,7 @@
 //
 // The point of these is the identities, not the arithmetic: if debits ever stop
 // equalling credits, or the balance sheet stops balancing, this fails loudly.
-import { buildBook, tAccount, trialBalance, profitForPeriod, balanceAt, SHARE_CAPITAL } from '../src/logic/ledger';
+import { activeAccountKeys, buildBook, tAccount, trialBalance, profitForPeriod, balanceAt, RETAINED_EARNINGS, SHARE_CAPITAL } from '../src/logic/ledger';
 import { financialYearFor, priorYear, socie, sofp } from '../src/logic/statements';
 import { incomeStatement, monthlyCashflow, round2 } from '../src/logic/compute';
 import { cashflowStatement, isCashAccount } from '../src/logic/cashflow';
@@ -99,6 +99,35 @@ const everyPairBalances = (() => {
 ok(everyPairBalances, 'every source row posts equal debits and credits');
 const tb = trialBalance(book, fy.from, fy.to);
 ok(tb.balanced, `trial balance balances (Dr ${tb.totalDebit} = Cr ${tb.totalCredit})`);
+eq(tb.rows.find((r) => r.key === RETAINED_EARNINGS)?.debit, 150, 'a first year holds only its own prior-period adjustment');
+
+console.log('\ntrial balance across a year-end');
+// The year after the fixture's: earlier results close into retained earnings.
+// 3000 profit - 300 dividend - 150 prior-period adjustment = 2550 credit.
+const nextTb = trialBalance(book, '2027-03-01', '2028-02-29');
+ok(nextTb.balanced, `the next year balances (Dr ${nextTb.totalDebit} = Cr ${nextTb.totalCredit})`);
+eq(nextTb.rows.find((r) => r.key === RETAINED_EARNINGS)?.credit, 2550, 'profit brought forward sits in retained earnings');
+eq(nextTb.rows.filter((r) => r.type === 'expense').length, 0, 'last year\'s expenses do not repeat');
+eq(nextTb.rows.find((r) => r.name === 'Revenue')?.credit, 9999, 'only this year\'s income shows');
+const nextRe = tAccount(book, RETAINED_EARNINGS, '2027-03-01', '2028-02-29');
+eq(nextRe.openingCredit, 2550, 'the retained earnings T-account opens at the same figure');
+ok(activeAccountKeys(book, '2028-02-29', '2027-03-01').includes(RETAINED_EARNINGS), 'and is listed');
+
+// A company that has only made losses, as Tsamaya has: the debit side, mid-year too.
+const lossData: AllData = {
+  ...data,
+  equity: [], valuations: [], assets: [],
+  transactions: [
+    tx({ tx_date: '2026-05-01', kind: 'expense', amount: 700, category_id: 'sub', account_id: 'loan', payee: 'Anthropic' }),
+    tx({ tx_date: '2026-06-01', kind: 'transfer', amount: 200, account_id: 'loan', transfer_account_id: 'bank' }),
+    tx({ tx_date: '2027-03-05', kind: 'expense', amount: 50, category_id: 'sub', account_id: 'bank', payee: 'Anthropic' }),
+  ],
+};
+const lossBook = buildBook(lossData);
+const lossTb = trialBalance(lossBook, '2027-03-01', '2028-02-29');
+ok(lossTb.balanced, `a brought-forward loss balances (Dr ${lossTb.totalDebit} = Cr ${lossTb.totalCredit})`);
+eq(lossTb.rows.find((r) => r.key === RETAINED_EARNINGS)?.debit, 700, 'the loss brought forward is a debit');
+eq(lossTb.totalDebit, 900, 'bank 150, this year\'s 50 and the 700 loss');
 
 console.log('\nprofit');
 // FY2027 P&L: income 5000; expenses 1200 + 800 = 2000. The R20 000 laptop is

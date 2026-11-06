@@ -27,7 +27,7 @@ export function Ledger() {
   }, [data.settings.fy_end_month, yearOffset]);
 
   const tb = useMemo(() => trialBalance(book, fy.from, fy.to), [book, fy]);
-  const keys = useMemo(() => activeAccountKeys(book, fy.to), [book, fy]);
+  const keys = useMemo(() => activeAccountKeys(book, fy.to, fy.from), [book, fy]);
   const shown = useMemo(() => {
     const q = filter.trim().toLowerCase();
     return keys

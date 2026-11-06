@@ -299,6 +299,8 @@ export interface TrialBalance {
  * Net balance per ledger account up to `to`. P&L accounts are restricted to
  * [from, to] so the trial balance can be run for a financial year; balance
  * sheet accounts always run from inception, which is what makes them balances.
+ * Results before `from` are closed off into retained earnings, or the balance
+ * sheet accounts would carry them with nothing on the other side.
  */
 export function trialBalance(book: LedgerBook, from: string, to: string): TrialBalance {
   const acc = new Map<string, { debit: number; credit: number }>();
@@ -306,11 +308,11 @@ export function trialBalance(book: LedgerBook, from: string, to: string): TrialB
     if (p.date > to) continue;
     const ref = book.accounts.get(p.key);
     const isPL = ref?.type === 'income' || ref?.type === 'expense' || p.key === DIVIDENDS;
-    if (isPL && p.date < from) continue;
-    const slot = acc.get(p.key) ?? { debit: 0, credit: 0 };
+    const key = isPL && p.date < from ? RETAINED_EARNINGS : p.key;
+    const slot = acc.get(key) ?? { debit: 0, credit: 0 };
     slot.debit += p.debit;
     slot.credit += p.credit;
-    acc.set(p.key, slot);
+    acc.set(key, slot);
   }
   const rows: TrialBalanceRow[] = [];
   let totalDebit = 0;
@@ -373,8 +375,14 @@ export function tAccount(book: LedgerBook, key: string, from: string, to: string
   const credits: TAccountEntry[] = [];
 
   for (const p of book.postings) {
-    if (p.key !== key) continue;
     if (p.date > to) continue;
+    if (key === RETAINED_EARNINGS && p.date < from && p.key !== key) {
+      // Earlier years' results, closed off here as in the trial balance.
+      const t = book.accounts.get(p.key)?.type;
+      if (t === 'income' || t === 'expense' || p.key === DIVIDENDS) openingNet += p.debit - p.credit;
+      continue;
+    }
+    if (p.key !== key) continue;
     if (p.date < from) {
       if (!isPL) openingNet += p.debit - p.credit; // balance brought down
       continue;
@@ -408,9 +416,16 @@ export function tAccount(book: LedgerBook, key: string, from: string, to: string
 }
 
 /** Every ledger account that has activity or an opening balance in the period. */
-export function activeAccountKeys(book: LedgerBook, to: string): string[] {
+export function activeAccountKeys(book: LedgerBook, to: string, from?: string): string[] {
   const seen = new Set<string>();
-  for (const p of book.postings) if (p.date <= to) seen.add(p.key);
+  for (const p of book.postings) {
+    if (p.date > to) continue;
+    seen.add(p.key);
+    if (from && p.date < from) {
+      const t = book.accounts.get(p.key)?.type;
+      if (t === 'income' || t === 'expense' || p.key === DIVIDENDS) seen.add(RETAINED_EARNINGS);
+    }
+  }
   const order: Record<AccountType, number> = { asset: 0, liability: 1, equity: 2, income: 3, expense: 4 };
   return [...seen].sort((a, b) => {
     const ra = book.accounts.get(a);
