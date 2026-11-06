@@ -31,7 +31,9 @@ export function Settings() {
         fy_end_month: fyEnd,
         locked_until: lockedUntil || null,
       })
-      .eq('user_id', (await supabase.auth.getUser()).data.user?.id ?? '');
+      // The company has one settings row, owned by the company owner rather than
+      // whoever is signed in. RLS limits this to that row; the filter is required.
+      .not('user_id', 'is', null);
     setBusy(false);
     if (err) return setError(err.message);
     setSaved(true);

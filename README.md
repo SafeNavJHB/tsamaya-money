@@ -8,10 +8,13 @@ and CSV/Excel/PDF export. Lives at **https://money.tsamayaapp.co.za**
 This repo holds **code only**. All data lives in the shared Tsamaya Supabase
 project in `fin_*` tables, locked down by row-level security:
 
-- every row carries `user_id` and policies require `user_id = auth.uid()`
+- every row carries `user_id`, which means the company owner, and policies
+  require it to equal `fin_company_owner()`, so every member shares one set of books
 - `fin_is_member()` additionally requires the uid to be listed in
-  `fin_members`, which clients can neither read nor write — a stranger who
+  `fin_members`, which clients can neither read nor write: a stranger who
   signs up sees nothing and can write nothing
+- bank connections and the bank feed stay per person, and bank tokens are
+  service-role only
 - the anon key in `src/config.ts` is Supabase's *publishable* key (public by
   design; it grants nothing without a signed-in session)
 
@@ -27,6 +30,7 @@ Beancount accounts map onto this app's model like this:
 | Beancount | Here |
 |---|---|
 | `Liabilities:DirectorLoan:Kyle` | the **"Director loan — Kyle" account**. Costs Kyle paid personally are spent from it, so its negative balance is what the company owes him, and its ledger is the director-loan statement |
+| `Liabilities:ShareholderLoan:Jess` | the **"Shareholder loan: Jess" account**, which works the same way for costs Jess paid personally |
 | `Assets:Prepaid:CIPC` | the **"CIPC deposit" account**. Loading R500 is a transfer in; filing fees are expenses paid from it, so the deposit draws down |
 | `Expenses:*` | categories |
 | `Equity:ShareCapital` | deliberately not posted — read the real subscription off the MOI/CoR15.1 first |
@@ -44,9 +48,11 @@ Beancount accounts map onto this app's model like this:
 | [`sql/07_disposals_journals_lock.sql`](sql/07_disposals_journals_lock.sql) | asset disposals, manual journal entries, period locking |
 | [`sql/08_bank_feed.sql`](sql/08_bank_feed.sql) | Nedbank bank feed: connections, staged transactions, service-role-only tokens |
 | [`sql/09_bank_link_state.sql`](sql/09_bank_link_state.sql) | pending OAuth link states for the one-click bank connect |
+| [`sql/10_shared_books.sql`](sql/10_shared_books.sql) | every member shares the company's books; the period lock and row defaults follow the company owner; `created_by` on transactions |
 
 All applied against the live database. To add a member: insert their auth uid
-into `fin_members` via SQL.
+into `fin_members` via SQL (they get full read and write). To remove one: delete
+that row.
 
 ## Concepts
 
